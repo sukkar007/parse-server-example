@@ -26,7 +26,7 @@
     "parse": "7.1.2",
     "parse-server": "8.6.0",
     "parse-dashboard": "^5.0.0",
-    "@onesignal/node-onesignal": "^3.0.0"
+    "@onesignal/node-onesignal": "^5.0.0-alpha-01"
   },
   "type": "module",
   "devDependencies": {
