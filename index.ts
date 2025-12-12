@@ -1,5 +1,3 @@
-// Example express application adding the parse-server module to expose Parse
-// compatible API routes.
 
 import express from 'express';
 import { ParseServer } from 'parse-server';
@@ -10,6 +8,19 @@ import { config } from './config.js';
 
 const __dirname = path.resolve();
 const app = express();
+
+// Enable CORS for all origins
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Parse-Application-Id, X-Parse-REST-API-Key, X-Parse-Master-Key, X-Parse-Session-Token');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
 
 // Serve static assets from the /public folder
 app.use('/public', express.static(path.join(__dirname, '/public')));
@@ -31,12 +42,7 @@ const dashboard = new ParseDashboard(
         appName: 'Parse Server',
       },
     ],
-    users: [
-      {
-        user: process.env.DASHBOARD_USER || 'admin',
-        pass: process.env.DASHBOARD_PASS || 'admin123',
-      },
-    ],
+    users: config.dashboardUsers,
   },
   true
 );
