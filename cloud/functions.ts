@@ -1,3 +1,5 @@
+import Parse from 'parse/node';
+
 Parse.Cloud.define('hello', req => {
   // @ts-expect-error req.log exists, but it was not added to types/parse
   req.log.info(req);
