@@ -6,9 +6,12 @@ export const config = {
   cloud: () => import('./cloud/main.js'),
   appId: process.env.APP_ID || 'myAppId',
   masterKey: process.env.MASTER_KEY || '', //Add your master key here. Keep it secret!
+  clientKey: process.env.CLIENT_KEY || 'myClientKey',
+  restAPIKey: process.env.REST_API_KEY || 'myRestApiKey',
+  javascriptKey: process.env.JAVASCRIPT_KEY || 'myJavascriptKey',
   serverURL: process.env.SERVER_URL || 'http://localhost:1337/parse', // Don't forget to change to https if needed
   liveQuery: {
-    classNames: ['Posts', 'Comments'], // List of classes to support for query subscriptions
+    classNames: ['Posts', 'Comments', 'Streaming', 'User', 'Installation'], // List of classes to support for query subscriptions
   },
   schema: {
     definitions: schemaDefinitions,
@@ -17,4 +20,10 @@ export const config = {
     recreateModifiedFields: false,
     deleteExtraFields: false,
   },
+  dashboardUsers: [
+    {
+      user: process.env.DASHBOARD_USER || 'admin',
+      pass: process.env.DASHBOARD_PASS || 'admin123',
+    },
+  ],
 };

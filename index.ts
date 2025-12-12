@@ -3,6 +3,7 @@
 
 import express from 'express';
 import { ParseServer } from 'parse-server';
+import ParseDashboard from 'parse-dashboard';
 import path from 'path';
 import http from 'http';
 import { config } from './config.js';
@@ -19,9 +20,31 @@ const server = new ParseServer(config);
 await server.start();
 app.use(mountPath, server.app);
 
+// Parse Dashboard
+const dashboard = new ParseDashboard(
+  {
+    apps: [
+      {
+        serverURL: process.env.SERVER_URL || 'http://localhost:1337/parse',
+        appId: process.env.APP_ID || 'myAppId',
+        masterKey: process.env.MASTER_KEY || '',
+        appName: 'Parse Server',
+      },
+    ],
+    users: config.dashboardUsers,
+  },
+  true
+);
+app.use('/dashboard', dashboard);
+
 // Parse Server plays nicely with the rest of your web routes
 app.get('/', function (req, res) {
-  res.status(200).send('I dream of being a website.  Please star the parse-server repo on GitHub!');
+  res.status(200).send(`
+    <h1>Parse Server is Running!</h1>
+    <p><a href="/parse">Parse API</a></p>
+    <p><a href="/dashboard">Parse Dashboard</a></p>
+    <p><a href="/test">Test Page</a></p>
+  `);
 });
 
 // There will be a test page available on the /test path of your server url
@@ -38,3 +61,4 @@ httpServer.listen(port, function () {
 // This will enable the Live Query real-time server
 await ParseServer.createLiveQueryServer(httpServer);
 console.log(`Visit http://localhost:${port}/test to check the Parse Server`);
+console.log(`Visit http://localhost:${port}/dashboard to access Parse Dashboard`);
