@@ -20,5 +20,4 @@ export const config = {
     recreateModifiedFields: false,
     deleteExtraFields: false,
   },
-
 };

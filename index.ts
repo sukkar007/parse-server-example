@@ -31,7 +31,12 @@ const dashboard = new ParseDashboard(
         appName: 'Parse Server',
       },
     ],
-    users: config.dashboardUsers,
+    users: [
+      {
+        user: process.env.DASHBOARD_USER || 'admin',
+        pass: process.env.DASHBOARD_PASS || 'admin123',
+      },
+    ],
   },
   true
 );
