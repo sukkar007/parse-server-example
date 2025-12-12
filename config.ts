@@ -20,10 +20,5 @@ export const config = {
     recreateModifiedFields: false,
     deleteExtraFields: false,
   },
-  dashboardUsers: [
-    {
-      user: process.env.DASHBOARD_USER || 'admin',
-      pass: process.env.DASHBOARD_PASS || 'admin123',
-    },
-  ],
+
 };
