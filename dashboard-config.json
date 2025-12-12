@@ -1,0 +1,18 @@
+{
+  "apps": [
+    {
+      "serverURL": "https://parse-server-example-o1ht.onrender.com/parse",
+      "appId": "myAppId",
+      "masterKey": "myMasterKey",
+      "appName": "MyApp"
+    }
+  ],
+  "users": [
+    {
+      "user": "admin",
+      "pass": "yourDashboardPassword"
+    }
+  ],
+  "useEncryptedPasswords": false,
+  "trustProxy": 1
+}
