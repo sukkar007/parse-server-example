@@ -20,4 +20,5 @@ export const config = {
     recreateModifiedFields: false,
     deleteExtraFields: false,
   },
+  allowOrigin: process.env.ALLOW_ORIGIN || 'https://parse-server-example-o1ht.onrender.com',
 };
