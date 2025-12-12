@@ -20,6 +20,7 @@ WORKDIR /usr/src/parse
 COPY --from=builder /usr/src/parse/node_modules ./node_modules
 COPY --from=builder /usr/src/parse/dist ./
 COPY --from=builder /usr/src/parse/public ./public
+COPY --from=builder /usr/src/parse/cloud ./cloud
 
 VOLUME ["/usr/src/parse/cloud", "/usr/src/parse/logs"]
 
