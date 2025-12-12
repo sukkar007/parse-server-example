@@ -3,7 +3,7 @@ import { schemaDefinitions } from './cloud/schema.js';
 export const config = {
   databaseURI:
     process.env.DATABASE_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/dev',
-  cloud: () => import('./cloud/main.js'),
+  cloud: './cloud/main.js',
   appId: process.env.APP_ID || 'myAppId',
   masterKey: process.env.MASTER_KEY || '', //Add your master key here. Keep it secret!
   clientKey: process.env.CLIENT_KEY || 'myClientKey',
