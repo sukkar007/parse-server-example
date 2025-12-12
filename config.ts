@@ -20,5 +20,10 @@ export const config = {
     recreateModifiedFields: false,
     deleteExtraFields: false,
   },
-  allowOrigin: process.env.ALLOW_ORIGIN || 'https://parse-server-example-o1ht.onrender.com',
+ dashboardUsers: [
+    {
+      user: process.env.DASHBOARD_USER || 'admin',
+      pass: process.env.DASHBOARD_PASS || 'admin123',
+    },
+  ],
 };
