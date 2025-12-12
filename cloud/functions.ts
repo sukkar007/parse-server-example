@@ -1,4 +1,4 @@
-import Parse from 'parse/node';
+import Parse from 'parse/node.js';
 
 Parse.Cloud.define('hello', req => {
   req.log.info(req);
