@@ -15,8 +15,8 @@ export const config = {
   },
   schema: {
     definitions: schemaDefinitions,
-    lockSchemas: true,
-    strict: true,
+    lockSchemas: false,
+    strict: false,
     recreateModifiedFields: false,
     deleteExtraFields: false,
   },
