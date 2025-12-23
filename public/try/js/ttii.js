@@ -1,6 +1,5 @@
 /**
- * لعبة عجلة الفواكه - نسخة آمنة
- * جميع الطلبات تمر عبر تطبيق Flutter (لا اتصال مباشر بـ Parse)
+ * لعبة عجلة الفواكه - نسخة مصححة
  */
 
 var count = 4;
@@ -22,7 +21,7 @@ var status = 0; // 0 يمكن النقر, 1 جاري السحب, 2 تم السح
 var currentGold = 1;
 var openDrawTimer = null;
 
-// معلومات اللاعب من تطبيق Flamingo (بدون token للأمان)
+// معلومات اللاعب من تطبيق Flamingo
 var info = window.flamingoPlayerInfo || {
     uid: '',
     lang: 'en',
@@ -72,7 +71,7 @@ var env = (function() {
         isProd,
         ios: !!ua.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/),
         android: ua.indexOf('Android') > -1 || ua.indexOf('Adr') > -1,
-        app: true // دائماً داخل التطبيق
+        app: true
     };
 })();
 
@@ -84,7 +83,6 @@ $(document).ready(function() {
         info = window.flamingoPlayerInfo;
         init();
     } else {
-        // انتظار قصير ثم المحاولة
         setTimeout(function() {
             if (window.flamingoPlayerInfo) {
                 info = window.flamingoPlayerInfo;
@@ -186,21 +184,18 @@ function showResult(result, topList, winGold, avatar) {
 }
 
 function countDown() {
-    if (countTimer) clearInterval(countTimer);
-
+    if (countTimer) {
+        clearInterval(countTimer);
+    }
     countTimer = setInterval(function() {
         countTime--;
-        $(".coutDown")[0].innerHTML = countTime + "s";
-
         if (countTime <= 0) {
-            clearInterval(countTimer);
             countTime = 0;
-            $(".coutDown")[0].innerHTML = countTime + "s";
-
-            // تغيير الحالة للسحب
-            status = 1;
-            roll(); // بدء السحب
+            status = 1; // تغيير الحالة إلى "جاري السحب"
+            roll();
+            clearInterval(countTimer);
         }
+        $(".coutDown")[0].innerHTML = countTime + "s";
     }, 1000);
 }
 
@@ -209,6 +204,15 @@ function openDraw() {
 }
 
 function sureClick(choice, index) {
+    console.log("Sure click called - Choice:", choice, "Index:", index);
+    
+    // التحقق من الحالة - يجب أن تكون 0 للسماح بالنقر
+    if (status !== 0) {
+        console.log("Cannot click - Status is:", status);
+        showSuccess(info.lang == "ar" ? "انتهى وقت الرهان!" : "Betting time ended!");
+        return;
+    }
+
     // التحقق من الرصيد
     let currentBalance = parseFloat($('.balanceCount').text());
     if (currentBalance < currentGold) {
@@ -216,10 +220,19 @@ function sureClick(choice, index) {
         return;
     }
 
+    // تحديث واجهة المستخدم فوراً
+    var list = [6, 7, 8, 1, 2, 3, 4, 5];
+    var itemIndex = list[index];
+    var currentAmount = parseInt($(`.item${itemIndex} .selected div:nth-child(2) div`).text()) || 0;
+    var newAmount = currentAmount + currentGold;
+    
+    $(`.item${itemIndex} .selected div:nth-child(2) div`).text(newAmount);
+    $(`.item${itemIndex} .selected`).show();
+    
     // تحديث الرصيد مؤقتاً
     $('.balanceCount').text((currentBalance - currentGold).toFixed(2));
 
-    // إرسال الطلب عبر التطبيق (آمن)
+    // إرسال الطلب عبر التطبيق
     callFlamingoApp('game_choice', {
         choice: choice,
         gold: currentGold
@@ -231,87 +244,134 @@ function sureClick(choice, index) {
                 selectArr.push(choice);
             }
 
-            var list = [6, 7, 8, 1, 2, 3, 4, 5];
-            var temp = $(`.item${list[index]} .selected div:nth-child(2) div`)[0].innerHTML;
-            $(`.item${list[index]} .selected div:nth-child(2) div`)[0].innerHTML = 
-                parseInt(temp) + parseInt(currentGold);
-            $(`.item${list[index]} .selected`).show();
-
-            // تحديث الرصيد
+            // تحديث الرصيد من الاستجابة
             if (res.balance !== undefined) {
                 $('.balanceCount').text(parseFloat(res.balance).toFixed(2));
             }
             
             // إعلام التطبيق بتحديث الرصيد
             sendToApp({ action: 'refreshBalance' });
+            
+            // إظهار نجاح
+            showSuccess(info.lang == "ar" ? "تم وضع الرهان بنجاح!" : "Bet placed successfully!");
         } else if (res.code == 10062) {
             showSuccess(info.lang == "ar" ? "يرجى الشحن" : "Please recharge");
             // إعادة الرصيد
             $('.balanceCount').text(currentBalance.toFixed(2));
+            // إخفاء التحديث
+            $(`.item${itemIndex} .selected div:nth-child(2) div`).text(currentAmount);
         } else {
             showSuccess(res.message || 'Error');
             $('.balanceCount').text(currentBalance.toFixed(2));
+            $(`.item${itemIndex} .selected div:nth-child(2) div`).text(currentAmount);
         }
     }).catch(function(error) {
         console.error("Choice error:", error);
         showSuccess(info.lang == "ar" ? "خطأ في النظام" : "System Error");
         $('.balanceCount').text(currentBalance.toFixed(2));
+        $(`.item${itemIndex} .selected div:nth-child(2) div`).text(currentAmount);
     });
 }
-function roll() {
+
+function roll(dir) {
+    console.log("Roll called, status changed to 1");
     hideHand();
+    status = 1; // تأكيد تغيير الحالة
     selectCount = 0;
     selectArr = [];
     $(".title1").hide();
     $(".title2").show();
-
-    // إعادة تعيين العناصر والطبقة الرمادية
-    for (var i = 0; i < 8; i++) {
+    $(".coutDown")[0].innerHTML = countTime + "s";
+    
+    var countTimer = setInterval(function() {
+        countTime--;
+        if (countTime <= 0) {
+            countTime = 0;
+            status = 0; // إعادة الحالة إلى 0 بعد انتهاء الجولة
+            clearInterval(countTimer);
+            clearInterval(rollTimer);
+            for (var i = 0; i < $(".item .gray").length; i++) {
+                $($(".item .gray")[i]).hide();
+            }
+            openDraw();
+        }
+        $(".coutDown")[0].innerHTML = countTime + "s";
+    }, 1000);
+    
+    for (var i = 0; i < $(".item .gray").length; i++) {
         $(".item" + (i + 1) + " .selected div:nth-child(2) div")[0].innerHTML = 0;
         $(".item" + (i + 1) + " .selected").hide();
         $(".item" + (i + 1)).removeClass("active");
-        $(".item" + (i + 1) + " .gray").show();
+        $($(".item .gray")[i]).show();
     }
-
-    // إخفاء عنصر واحد فقط كجزء من الحركة
     $($(".item .gray")[rollCount]).hide();
-
-    // بدء الحركة
-    if (rollTimer) clearInterval(rollTimer);
+    
     rollTimer = setInterval(function() {
         for (var i = 0; i < $(".item .gray").length; i++) {
             $($(".item .gray")[i]).show();
         }
         rollCount++;
-        if (rollCount > 7) rollCount = 0;
+        if (rollCount > 7) {
+            rollCount = 0;
+        }
         $($(".item .gray")[rollCount]).hide();
     }, 100);
-
-    // بعد 2 ثانية، إظهار النتيجة وتمكين النقر
-    setTimeout(function() {
-        openDraw(); // جلب النتائج
-        for (var i = 0; i < $(".item .gray").length; i++) {
-            $($(".item .gray")[i]).hide();
-        }
-        status = 0; // تمكين النقر
-        $(".title2").hide();
-        $(".title1").show();
-        countTime = 10;
-        countDown(); // بدء الجولة الجديدة
-    }, 2000);
+    
+    countTime = 10;
 }
+
 var hideLock = false;
 
 function bindEvent() {
+    console.log("Binding events...");
+    
+    // ربط أحداث النقر على مبلغ الذهب
     $(".clickArea .clickItem").click(function() {
-        for (var i = 0; i < $(".clickItem").length; i++) {
-            $($(".clickItem").removeClass("active"));
-        }
+        console.log("Gold amount clicked:", $(this).data("index"));
+        $(".clickItem").removeClass("active");
         $(this).addClass("active");
-        currentGold = goldList[$(this).data("index")];
-        console.log("Selected gold:", currentGold);
+        var index = $(this).data("index");
+        currentGold = goldList[index];
+        console.log("Selected gold amount:", currentGold);
     });
     
+    // ربط أحداث النقر على الفواكه (تصحيح الفهرس)
+    // الـ items في HTML مرقمة من item1 إلى item8
+    for (var i = 1; i <= 8; i++) {
+        (function(index) {
+            // حساب المؤشر الصحيح للفاكهة (0-7)
+            var fruitIndex = (index - 1) % 8;
+            var choice = choiceList[fruitIndex];
+            
+            console.log("Binding item" + index + " -> fruitIndex:", fruitIndex, "choice:", choice);
+            
+            $(".item" + index).off('click').on('click', function() {
+                console.log("Fruit clicked - item" + index + ", status:", status, "currentGold:", currentGold);
+                
+                if (status === 0) {
+                    sureClick(choice, fruitIndex);
+                } else {
+                    console.log("Click rejected - status is:", status);
+                    showSuccess(info.lang == "ar" ? "انتهى وقت الرهان!" : "Betting time ended!");
+                }
+            });
+        })(i);
+    }
+    
+    // إضافة مؤشر يد للتأكيد
+    $(".item").css('cursor', 'pointer');
+    $(".item").hover(
+        function() {
+            if (status === 0) {
+                $(this).css('transform', 'scale(1.05)');
+            }
+        },
+        function() {
+            $(this).css('transform', 'scale(1)');
+        }
+    );
+    
+    // التحكم في visibility
     try {
         document.addEventListener("visibilitychange", function() {
             if (document.hidden) {
@@ -328,35 +388,20 @@ function bindEvent() {
     } catch (e) {
         console.error("Visibility change error:", e);
     }
-
-    // ربط أحداث النقر على الفواكه
-    for (var i = 0; i < 8; i++) {
-        (function(index) {
-            $(".item" + (index + 1)).click(function() {
-                if (status === 0) {
-                    var choice = choiceList[index];
-                    sureClick(choice, index);
-                }
-            });
-        })(i);
-    }
 }
 
 /**
  * دالة آمنة للاتصال بـ Parse عبر التطبيق
- * بدلاً من الاتصال المباشر بـ Parse Server
  */
 function callFlamingoApp(action, params) {
     return new Promise(function(resolve, reject) {
         var requestId = 'req_' + (++requestIdCounter) + '_' + Date.now();
         
-        // تخزين callback
         pendingRequests[requestId] = {
             resolve: resolve,
             reject: reject
         };
         
-        // إرسال الطلب للتطبيق
         var message = JSON.stringify({
             action: action,
             requestId: requestId,
@@ -371,7 +416,6 @@ function callFlamingoApp(action, params) {
             reject('FlamingoApp not available');
         }
         
-        // Timeout بعد 30 ثانية
         setTimeout(function() {
             if (pendingRequests[requestId]) {
                 delete pendingRequests[requestId];
@@ -381,7 +425,6 @@ function callFlamingoApp(action, params) {
     });
 }
 
-// إرسال رسالة بسيطة للتطبيق (بدون انتظار رد)
 function sendToApp(data) {
     if (window.FlamingoApp) {
         window.FlamingoApp.postMessage(JSON.stringify(data));
@@ -470,6 +513,13 @@ function getInfo(_round, isChoice) {
                 
                 if (countTimer) clearInterval(countTimer);
                 countDown();
+                
+                // تأكد من أن الحالة صحيحة بناءً على الوقت المتبقي
+                if (countTime > 0) {
+                    status = 0; // السماح بالنقر
+                } else {
+                    status = 1; // منع النقر
+                }
             }
 
             $(".title2").hide();
@@ -513,8 +563,9 @@ function getInfo(_round, isChoice) {
                 var ak = Object.keys(res.data.select);
                 var vk = Object.values(res.data.select);
                 for (var i = 0; i < ak.length; i++) {
-                    $(".item" + searchGift(ak[i]) + " .selected div:nth-child(2) div")[0].innerHTML = vk[i];
-                    $(".item" + searchGift(ak[i]) + " .selected").show();
+                    var giftIndex = searchGift(ak[i]);
+                    $(".item" + giftIndex + " .selected div:nth-child(2) div")[0].innerHTML = vk[i];
+                    $(".item" + giftIndex + " .selected").show();
                 }
             } else {
                 for (var i = 0; i < $(".item .gray").length; i++) {
@@ -556,6 +607,7 @@ function getInfo(_round, isChoice) {
 }
 
 function searchGift(value) {
+    console.log("Searching gift for value:", value);
     var temp = 0;
     for (var i = 0; i < choiceList.length; i++) {
         if (value == choiceList[i]) {
@@ -564,7 +616,9 @@ function searchGift(value) {
         }
     }
     var list = [6, 7, 8, 1, 2, 3, 4, 5];
-    return list[temp];
+    var result = list[temp];
+    console.log("Found gift index:", result);
+    return result;
 }
 
 function getBill() {
@@ -619,6 +673,7 @@ function changeWord(win) {
 }
 
 function showSuccess(msg, fn) {
+    console.log("Show success:", msg);
     $(".pop-success div")[0].innerHTML = msg;
     $(".pop-success").show();
     setTimeout(function() {
