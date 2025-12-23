@@ -36,12 +36,33 @@ var info = window.flamingoPlayerInfo || {
 var pendingRequests = {};
 var requestIdCounter = 0;
 
+console.log("=== GAME SCRIPT LOADED ===");
 console.log("Player Info:", info);
+
+// فحص توفر المكتبات
+function checkLibraries() {
+    console.log("Checking libraries...");
+    
+    if (typeof jQuery === 'undefined') {
+        console.error("jQuery is NOT loaded!");
+        return false;
+    }
+    console.log("jQuery version:", jQuery.fn.jquery);
+    
+    if (typeof moment === 'undefined') {
+        console.error("Moment.js is NOT loaded!");
+        return false;
+    }
+    console.log("Moment.js loaded");
+    
+    return true;
+}
 
 // استلام معلومات اللاعب من التطبيق
 window.onFlamingoPlayerInfo = function(playerInfo) {
+    console.log("=== RECEIVED PLAYER INFO ===");
     info = playerInfo;
-    console.log("Received player info:", info);
+    console.log("Player info updated:", info);
     init();
 };
 
@@ -77,7 +98,7 @@ var env = (function() {
 })();
 
 $(document).ready(function() {
-    console.log("Document ready");
+    console.log("=== DOCUMENT READY ===");
     
     // انتظار معلومات اللاعب من التطبيق
     if (window.flamingoPlayerInfo) {
@@ -88,21 +109,67 @@ $(document).ready(function() {
         setTimeout(function() {
             if (window.flamingoPlayerInfo) {
                 info = window.flamingoPlayerInfo;
+                init();
+            } else {
+                console.log("No player info yet, trying anyway...");
+                init();
             }
-            init();
-        }, 500);
+        }, 1000);
     }
 });
 
 function init() {
-    console.log("Initializing game...");
-    moment.tz.setDefault("Asia/Riyadh");
+    console.log("=== INITIALIZING GAME ===");
+    console.log("Player info:", info);
+    
+    // التحقق من المكتبات
+    if (!checkLibraries()) {
+        console.error("Required libraries not loaded! Retrying...");
+        setTimeout(init, 1000);
+        return;
+    }
+    
+    // إعداد المنطقة الزمنية
+    if (typeof moment !== 'undefined' && moment.tz) {
+        moment.tz.setDefault("Asia/Riyadh");
+    }
+    
     changeLang(info.lang || 'en');
-    showHand();
-    bindEvent();
-    getInfo();
-    getBill();
-    getRank();
+    
+    // فحص العناصر قبل ربط الأحداث
+    setTimeout(function() {
+        console.log("Checking DOM elements...");
+        
+        // فحص العناصر الحاسمة
+        var criticalElements = [
+            '.item1', '.item2', '.item3', '.item4',
+            '.item5', '.item6', '.item7', '.item8',
+            '.balanceCount', '.clickArea', '.clickItem'
+        ];
+        
+        criticalElements.forEach(function(selector) {
+            var count = $(selector).length;
+            console.log(selector + ": " + count + " elements");
+        });
+        
+        // فحص حالة العناصر
+        console.log("Current status:", status);
+        console.log("Current gold:", currentGold);
+        
+        // ربط الأحداث
+        showHand();
+        bindEvent();
+        
+        // اختبار النقر بعد 2 ثوان
+        setTimeout(testClick, 2000);
+        
+        // جلب البيانات
+        getInfo();
+        getBill();
+        getRank();
+        
+        console.log("Game initialization complete!");
+    }, 500);
 }
 
 function showHand() {
@@ -206,46 +273,78 @@ function openDraw() {
 }
 
 function sureClick(choice, index) {
+    console.log("=== SURE CLICK STARTED ===");
+    console.log("Choice:", choice);
+    console.log("Index:", index);
+    console.log("Current gold:", currentGold);
+    
     // التحقق من الرصيد
     let currentBalance = parseFloat($('.balanceCount').text());
+    console.log("Current balance:", currentBalance);
+    
+    if (isNaN(currentBalance)) {
+        console.error("Balance is NaN!");
+        currentBalance = 0;
+    }
+    
     if (currentBalance < currentGold) {
+        console.log("Insufficient balance!");
         showSuccess(info.lang == "ar" ? "رصيد غير كافٍ!" : "Insufficient balance!");
         return;
     }
 
     // تحديث الرصيد مؤقتاً
     $('.balanceCount').text((currentBalance - currentGold).toFixed(2));
+    console.log("Balance after deduction:", $('.balanceCount').text());
 
-    // إرسال الطلب عبر التطبيق (آمن)
+    // إرسال الطلب عبر التطبيق
+    console.log("Calling game_choice with:", { choice: choice, gold: currentGold });
+    
     callFlamingoApp('game_choice', {
         choice: choice,
         gold: currentGold
     }).then(function(res) {
-        console.log("Choice response:", res);
+        console.log("Choice response received:", res);
+        
         if (res.code == 200) {
+            console.log("Bet successful!");
+            
             selectCount += 1;
             if (!selectArr.includes(choice)) {
                 selectArr.push(choice);
             }
+            console.log("Select array:", selectArr);
 
             var list = [6, 7, 8, 1, 2, 3, 4, 5];
-            var temp = $(`.item${list[index]} .selected div:nth-child(2) div`)[0].innerHTML;
-            $(`.item${list[index]} .selected div:nth-child(2) div`)[0].innerHTML = 
-                parseInt(temp) + parseInt(currentGold);
-            $(`.item${list[index]} .selected`).show();
+            var element = $(`.item${list[index]} .selected div:nth-child(2) div`);
+            
+            if (element.length > 0) {
+                var temp = element.text();
+                console.log("Previous bet amount:", temp);
+                element.text(parseInt(temp || 0) + parseInt(currentGold));
+                $(`.item${list[index]} .selected`).show();
+                console.log("Bet amount updated");
+            } else {
+                console.error("Bet amount element not found!");
+            }
 
             // تحديث الرصيد
             if (res.balance !== undefined) {
                 $('.balanceCount').text(parseFloat(res.balance).toFixed(2));
+                console.log("Balance updated to:", res.balance);
             }
             
             // إعلام التطبيق بتحديث الرصيد
             sendToApp({ action: 'refreshBalance' });
+            
+            showSuccess(info.lang == "ar" ? "تم الرهان بنجاح!" : "Bet successful!");
         } else if (res.code == 10062) {
+            console.error("Insufficient credits error");
             showSuccess(info.lang == "ar" ? "يرجى الشحن" : "Please recharge");
             // إعادة الرصيد
             $('.balanceCount').text(currentBalance.toFixed(2));
         } else {
+            console.error("API error:", res.message);
             showSuccess(res.message || 'Error');
             $('.balanceCount').text(currentBalance.toFixed(2));
         }
@@ -254,6 +353,8 @@ function sureClick(choice, index) {
         showSuccess(info.lang == "ar" ? "خطأ في النظام" : "System Error");
         $('.balanceCount').text(currentBalance.toFixed(2));
     });
+    
+    console.log("=== SURE CLICK ENDED ===");
 }
 
 function roll(dir) {
@@ -304,15 +405,91 @@ function roll(dir) {
 var hideLock = false;
 
 function bindEvent() {
-    $(".clickArea .clickItem").click(function() {
-        for (var i = 0; i < $(".clickItem").length; i++) {
-            $($(".clickItem").removeClass("active"));
-        }
+    console.log("=== BINDING EVENTS ===");
+    
+    // فحص العناصر أولاً
+    var clickItems = $(".clickItem");
+    console.log("Found click items:", clickItems.length);
+    
+    // ربط أحداث الكوينز - الكود المصحح هنا
+    $(".clickArea .clickItem").off('click').on('click', function(e) {
+        e.stopPropagation();
+        console.log("Coin clicked, index:", $(this).data("index"));
+        
+        // تصحيح الخطأ: يجب أن تكون $(".clickItem") بدون القوسين
+        $(".clickItem").removeClass("active");
         $(this).addClass("active");
         currentGold = goldList[$(this).data("index")];
         console.log("Selected gold:", currentGold);
     });
     
+    // ربط أحداث الفواكه مع لوج مفصل
+    var fruitElements = [];
+    for (var i = 1; i <= 8; i++) {
+        var selector = ".item" + i;
+        var elements = $(selector);
+        fruitElements.push(elements.length);
+        
+        if (elements.length > 0) {
+            console.log("Binding click to " + selector);
+            
+            // إزالة أي أحداث سابقة أولاً
+            $(selector).off('click');
+            
+            // ربط الحدث الجديد
+            $(selector).on('click', function(e) {
+                e.stopPropagation();
+                
+                // الحصول على index من الكلاس
+                var className = $(this).attr('class');
+                var match = className.match(/item(\d+)/);
+                var itemIndex = match ? parseInt(match[1]) - 1 : -1;
+                
+                console.log("=== FRUIT CLICKED ===");
+                console.log("Item clicked:", className);
+                console.log("Item index:", itemIndex);
+                console.log("Game status:", status);
+                console.log("Current gold:", currentGold);
+                console.log("Balance:", $(".balanceCount").text());
+                
+                if (status === 0) {
+                    if (itemIndex >= 0 && itemIndex < choiceList.length) {
+                        var choice = choiceList[itemIndex];
+                        console.log("Will choose:", choice);
+                        sureClick(choice, itemIndex);
+                    } else {
+                        console.error("Invalid item index:", itemIndex);
+                    }
+                } else {
+                    console.log("Cannot click now, status is:", status);
+                    showSuccess(info.lang == "ar" ? "انتظر الجولة القادمة" : "Wait for next round");
+                }
+            });
+            
+            // إضافة مؤشر النقر للعنصر
+            $(selector).css({
+                'cursor': 'pointer',
+                'position': 'relative'
+            });
+            
+            // إضافة hover effect للاختبار
+            $(selector).hover(
+                function() {
+                    $(this).css('opacity', '0.8');
+                },
+                function() {
+                    $(this).css('opacity', '1');
+                }
+            );
+        } else {
+            console.error("Element NOT found: " + selector);
+        }
+    }
+    
+    console.log("Fruit elements found:", fruitElements);
+    console.log("Total elements with click event:", $(".item1, .item2, .item3, .item4, .item5, .item6, .item7, .item8").length);
+    
+    // إضافة event listener لمنع السلوك الافتراضي
     try {
         document.addEventListener("visibilitychange", function() {
             if (document.hidden) {
@@ -329,17 +506,48 @@ function bindEvent() {
     } catch (e) {
         console.error("Visibility change error:", e);
     }
+    
+    // إضافة زر تصحيح يدوي
+    if ($('#debugBtn').length === 0) {
+        $('body').append('<button id="debugBtn" style="position:fixed; top:10px; right:10px; z-index:9999; background:#ff4444; color:white; padding:10px; border:none; border-radius:5px; cursor:pointer;">Debug Game</button>');
+        
+        $('#debugBtn').click(function() {
+            console.log("=== MANUAL DEBUG ===");
+            testClick();
+            bindEvent();
+            getInfo();
+        });
+    }
+    
+    console.log("Event binding complete!");
+}
 
-    // ربط أحداث النقر على الفواكه
-    for (var i = 0; i < 8; i++) {
-        (function(index) {
-            $(".item" + (index + 1)).click(function() {
-                if (status === 0) {
-                    var choice = choiceList[index];
-                    sureClick(choice, index);
-                }
-            });
-        })(i);
+// دالة اختبار النقر
+function testClick() {
+    console.log("=== TESTING CLICK ===");
+    
+    // اختبار النقر على العنصر الأول
+    if ($(".item1").length > 0) {
+        console.log("Testing click on item1...");
+        console.log("item1 CSS cursor:", $(".item1").css('cursor'));
+        
+        // محاكاة النقر برمجياً
+        var event = new MouseEvent('click', {
+            view: window,
+            bubbles: true,
+            cancelable: true
+        });
+        
+        $(".item1")[0].dispatchEvent(event);
+        console.log("Test click dispatched");
+    } else {
+        console.error("Cannot test click - item1 not found");
+    }
+    
+    // اختبار اختيار الكوينز
+    if ($(".clickItem").length > 0) {
+        console.log("Testing coin selection...");
+        $(".clickItem").first().click();
     }
 }
 
@@ -657,4 +865,24 @@ function changeLang(defaultLang) {
 // دالة لإغلاق اللعبة
 function closeGame() {
     sendToApp({ action: 'close' });
+}
+
+// دالة لإعادة تهيئة اللعبة
+function reinitializeGame() {
+    console.log("=== REINITIALIZING GAME ===");
+    
+    // إعادة تعيين المتغيرات
+    status = 0;
+    selectArr = [];
+    selectCount = 0;
+    currentGold = 1;
+    
+    // إعادة ربط الأحداث
+    bindEvent();
+    
+    // إعادة تحميل البيانات
+    getInfo();
+    
+    showSuccess(info.lang == "ar" ? "تمت إعادة التهيئة" : "Game reinitialized");
+    console.log("Game reinitialized!");
 }
