@@ -76,7 +76,7 @@ var env = (function() {
 })();
 
 $(document).ready(function() {
-    console.log("Document ready");
+    console.log("Document ready, initial status:", status);
     
     // انتظار معلومات اللاعب من التطبيق
     if (window.flamingoPlayerInfo) {
@@ -93,7 +93,7 @@ $(document).ready(function() {
 });
 
 function init() {
-    console.log("Initializing game...");
+    console.log("Initializing game... Status:", status);
     moment.tz.setDefault("Asia/Riyadh");
     changeLang(info.lang || 'en');
     showHand();
@@ -101,6 +101,9 @@ function init() {
     getInfo();
     getBill();
     getRank();
+    
+    // تأكيد أن الحالة صحيحة للبدء
+    status = 0;
 }
 
 function showHand() {
@@ -184,18 +187,31 @@ function showResult(result, topList, winGold, avatar) {
 }
 
 function countDown() {
+    console.log("Starting countdown, status:", status);
     if (countTimer) {
         clearInterval(countTimer);
     }
+    
+    // تأكيد السماح بالنقر أثناء العد التنازلي
+    status = 0;
+    
     countTimer = setInterval(function() {
         countTime--;
+        console.log("Countdown:", countTime, "s, status:", status);
+        
         if (countTime <= 0) {
             countTime = 0;
             status = 1; // تغيير الحالة إلى "جاري السحب"
+            console.log("Countdown finished, status changed to:", status);
             roll();
             clearInterval(countTimer);
         }
         $(".coutDown")[0].innerHTML = countTime + "s";
+        
+        // عند اقتراب النهاية، تذكير المستخدم
+        if (countTime === 5) {
+            showSuccess(info.lang == "ar" ? "5 ثوانٍ متبقية!" : "5 seconds remaining!");
+        }
     }, 1000);
 }
 
@@ -204,12 +220,19 @@ function openDraw() {
 }
 
 function sureClick(choice, index) {
-    console.log("Sure click called - Choice:", choice, "Index:", index);
+    console.log("Sure click called - Choice:", choice, "Index:", index, "Status:", status);
     
     // التحقق من الحالة - يجب أن تكون 0 للسماح بالنقر
     if (status !== 0) {
         console.log("Cannot click - Status is:", status);
-        showSuccess(info.lang == "ar" ? "انتهى وقت الرهان!" : "Betting time ended!");
+        var message = info.lang == "ar" ? "انتهى وقت الرهان!" : "Betting time ended!";
+        
+        // إذا كانت الحالة 1، فهذا يعني أن الوقت انتهى
+        if (status === 1) {
+            message = info.lang == "ar" ? "انتهى وقت الرهان! انتظر الجولة القادمة" : "Betting time ended! Wait for next round";
+        }
+        
+        showSuccess(message);
         return;
     }
 
@@ -253,7 +276,10 @@ function sureClick(choice, index) {
             sendToApp({ action: 'refreshBalance' });
             
             // إظهار نجاح
-            showSuccess(info.lang == "ar" ? "تم وضع الرهان بنجاح!" : "Bet placed successfully!");
+            var successMsg = info.lang == "ar" ? 
+                "تم وضع الرهان بنجاح! " + currentGold + " ذهب" :
+                "Bet placed successfully! " + currentGold + " gold";
+            showSuccess(successMsg);
         } else if (res.code == 10062) {
             showSuccess(info.lang == "ar" ? "يرجى الشحن" : "Please recharge");
             // إعادة الرصيد
@@ -283,37 +309,59 @@ function roll(dir) {
     $(".title2").show();
     $(".coutDown")[0].innerHTML = countTime + "s";
     
+    if (rollTimer) {
+        clearInterval(rollTimer);
+    }
+    
+    // إظهار أن الوقت انتهى
+    showSuccess(info.lang == "ar" ? "انتهى وقت الرهان! جاري تحديد الفائز..." : "Betting time ended! Determining winner...");
+    
     var countTimer = setInterval(function() {
         countTime--;
+        console.log("Roll countdown:", countTime, "s");
+        
         if (countTime <= 0) {
             countTime = 0;
             status = 0; // إعادة الحالة إلى 0 بعد انتهاء الجولة
+            console.log("Roll finished, status changed to:", status);
             clearInterval(countTimer);
             clearInterval(rollTimer);
-            for (var i = 0; i < $(".item .gray").length; i++) {
-                $($(".item .gray")[i]).hide();
-            }
-            openDraw();
+            
+            // إخفاء جميع gray overlays
+            $(".item .gray").hide();
+            
+            // الانتظار قليلاً ثم فتح الجولة التالية
+            setTimeout(function() {
+                openDraw();
+                showSuccess(info.lang == "ar" ? "ابدأ الرهان الآن!" : "Start betting now!");
+            }, 1000);
         }
         $(".coutDown")[0].innerHTML = countTime + "s";
     }, 1000);
     
+    // مسح الرهانات السابقة
     for (var i = 0; i < $(".item .gray").length; i++) {
         $(".item" + (i + 1) + " .selected div:nth-child(2) div")[0].innerHTML = 0;
         $(".item" + (i + 1) + " .selected").hide();
         $(".item" + (i + 1)).removeClass("active");
         $($(".item .gray")[i]).show();
     }
+    
+    // إخفاء واحد لبدء الحركة
     $($(".item .gray")[rollCount]).hide();
     
     rollTimer = setInterval(function() {
+        // إظهار جميع gray overlays
         for (var i = 0; i < $(".item .gray").length; i++) {
             $($(".item .gray")[i]).show();
         }
+        
         rollCount++;
         if (rollCount > 7) {
             rollCount = 0;
         }
+        
+        // إخفاء العنصر الحالي
         $($(".item .gray")[rollCount]).hide();
     }, 100);
     
@@ -323,10 +371,10 @@ function roll(dir) {
 var hideLock = false;
 
 function bindEvent() {
-    console.log("Binding events...");
+    console.log("Binding events... Current status:", status);
     
     // ربط أحداث النقر على مبلغ الذهب
-    $(".clickArea .clickItem").click(function() {
+    $(".clickArea .clickItem").off('click').on('click', function() {
         console.log("Gold amount clicked:", $(this).data("index"));
         $(".clickItem").removeClass("active");
         $(this).addClass("active");
@@ -335,41 +383,79 @@ function bindEvent() {
         console.log("Selected gold amount:", currentGold);
     });
     
-    // ربط أحداث النقر على الفواكه (تصحيح الفهرس)
-    // الـ items في HTML مرقمة من item1 إلى item8
-    for (var i = 1; i <= 8; i++) {
-        (function(index) {
-            // حساب المؤشر الصحيح للفاكهة (0-7)
-            var fruitIndex = (index - 1) % 8;
-            var choice = choiceList[fruitIndex];
-            
-            console.log("Binding item" + index + " -> fruitIndex:", fruitIndex, "choice:", choice);
-            
-            $(".item" + index).off('click').on('click', function() {
-                console.log("Fruit clicked - item" + index + ", status:", status, "currentGold:", currentGold);
-                
-                if (status === 0) {
-                    sureClick(choice, fruitIndex);
-                } else {
-                    console.log("Click rejected - status is:", status);
-                    showSuccess(info.lang == "ar" ? "انتهى وقت الرهان!" : "Betting time ended!");
-                }
-            });
-        })(i);
-    }
+    // تأكد من أن العناصر قابلة للنقر
+    $(".item").css({
+        'cursor': 'pointer',
+        'position': 'relative',
+        'z-index': '10'
+    });
     
-    // إضافة مؤشر يد للتأكيد
-    $(".item").css('cursor', 'pointer');
+    // ربط أحداث النقر على الفواكه
+    $(".item").off('click').on('click', function(e) {
+        e.stopPropagation();
+        
+        // الحصول على رقم العنصر (item1 إلى item8)
+        var className = $(this).attr('class');
+        var itemNumber = 0;
+        
+        // البحث عن itemX في class
+        var classParts = className.split(' ');
+        for (var i = 0; i < classParts.length; i++) {
+            if (classParts[i].startsWith('item')) {
+                var num = classParts[i].replace('item', '');
+                if (!isNaN(num)) {
+                    itemNumber = parseInt(num);
+                    break;
+                }
+            }
+        }
+        
+        if (itemNumber === 0) return;
+        
+        console.log("Fruit clicked - item" + itemNumber + ", status:", status, "currentGold:", currentGold);
+        
+        // حساب index الفاكهة
+        var fruitIndex = itemNumber - 1; // 0-7
+        var choice = choiceList[fruitIndex];
+        
+        if (status === 0) {
+            sureClick(choice, fruitIndex);
+        } else {
+            console.log("Click rejected - status is:", status);
+            
+            // رسالة توضيحية
+            var message = "";
+            if (status === 1) {
+                message = info.lang == "ar" ? 
+                    "انتهى وقت الرهان! جاري تحديد الفائز" : 
+                    "Betting time ended! Determining winner";
+            } else {
+                message = info.lang == "ar" ? 
+                    "الرجاء الانتظار..." : 
+                    "Please wait...";
+            }
+            
+            showSuccess(message);
+        }
+    });
+    
+    // إضافة تأثير hover للتأكيد
     $(".item").hover(
         function() {
             if (status === 0) {
                 $(this).css('transform', 'scale(1.05)');
+                $(this).css('transition', 'transform 0.2s');
             }
         },
         function() {
             $(this).css('transform', 'scale(1)');
         }
     );
+    
+    // إضافة زر لتحديث الصفحة يدوياً في حالة المشاكل
+    $(".title1").dblclick(function() {
+        location.reload();
+    });
     
     // التحكم في visibility
     try {
@@ -475,7 +561,7 @@ function getRank() {
 }
 
 function getInfo(_round, isChoice) {
-    console.log("Getting game info...");
+    console.log("Getting game info... Current status:", status);
     
     var params = {};
     if (_round) {
@@ -511,15 +597,20 @@ function getInfo(_round, isChoice) {
                 countTime = res.data.countdown;
                 $(".coutDown")[0].innerHTML = countTime + "s";
                 
-                if (countTimer) clearInterval(countTimer);
-                countDown();
-                
-                // تأكد من أن الحالة صحيحة بناءً على الوقت المتبقي
+                // إعادة تعيين الحالة بناءً على الوقت المتبقي
                 if (countTime > 0) {
                     status = 0; // السماح بالنقر
+                    console.log("Game started, status set to 0 (can click)");
                 } else {
                     status = 1; // منع النقر
+                    console.log("Game ended, status set to 1 (cannot click)");
                 }
+                
+                // إعادة ربط الأحداث لضمان عملها
+                bindEvent();
+                
+                if (countTimer) clearInterval(countTimer);
+                countDown();
             }
 
             $(".title2").hide();
@@ -599,6 +690,13 @@ function getInfo(_round, isChoice) {
                     $(".rewordNo .reword_content .countDown")[0].innerHTML = resultCount + "s";
                 }, 1000);
                 $(".rewordNo").show();
+            }
+            
+            // إظهار رسالة بدء اللعبة
+            if (status === 0) {
+                setTimeout(function() {
+                    showSuccess(info.lang == "ar" ? "ابدأ الرهان الآن!" : "Start betting now!");
+                }, 500);
             }
         }
     }).catch(function(error) {
