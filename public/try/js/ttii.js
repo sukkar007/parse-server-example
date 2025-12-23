@@ -1,89 +1,103 @@
-  var count = 4;
-    var rollCount = 1;
-    var countTime = 10;
-    var round = 0;
+/**
+ * لعبة عجلة الفواكه - نسخة آمنة
+ * جميع الطلبات تمر عبر تطبيق Flutter (لا اتصال مباشر بـ Parse)
+ */
 
+var count = 4;
+var rollCount = 1;
+var countTime = 10;
+var round = 0;
 
-    var selectCount = 0;
-    var selectArr = [];
-    var countTimer = null;
-    var handTimer = null;
-    var rollTimer = null;
-    var resultTimer = null;
-    var timesWord = [5, 5, 10, 15, 25, 45, 5, 5];
-    var goldList = [1, 10, 100, 1000, 10000];
-    var resultCount = 5;
-    var choiceList = ["g", "h", "a", "b", "c", "d", "e", "f"];
-    var status = 0; // 0 可点击, 1 正在开奖, 2 已开奖
-    var currentGold = 1;
-    var openDrawTimer = null;
+var selectCount = 0;
+var selectArr = [];
+var countTimer = null;
+var handTimer = null;
+var rollTimer = null;
+var resultTimer = null;
+var timesWord = [5, 5, 10, 15, 25, 45, 5, 5];
+var goldList = [1, 10, 100, 1000, 10000];
+var resultCount = 5;
+var choiceList = ["g", "h", "a", "b", "c", "d", "e", "f"];
+var status = 0; // 0 يمكن النقر, 1 جاري السحب, 2 تم السحب
+var currentGold = 1;
+var openDrawTimer = null;
 
-    console.log("User Info:", info);
+// معلومات اللاعب من تطبيق Flamingo (بدون token للأمان)
+var info = window.flamingoPlayerInfo || {
+    uid: '',
+    lang: 'en',
+    nickname: '',
+    avatar: '',
+    credits: 0,
+    diamonds: 0
+};
+
+// تخزين callbacks للطلبات المعلقة
+var pendingRequests = {};
+var requestIdCounter = 0;
+
+console.log("Player Info:", info);
+
+// استلام معلومات اللاعب من التطبيق
+window.onFlamingoPlayerInfo = function(playerInfo) {
+    info = playerInfo;
+    console.log("Received player info:", info);
+    init();
+};
+
+// استلام الاستجابات من التطبيق
+window.onFlamingoResponse = function(response) {
+    console.log("Received response from app:", response);
     
+    var requestId = response.requestId;
+    if (requestId && pendingRequests[requestId]) {
+        var callback = pendingRequests[requestId];
+        delete pendingRequests[requestId];
+        
+        if (response.success) {
+            callback.resolve(response.data);
+        } else {
+            callback.reject(response.error || 'Unknown error');
+        }
+    }
+};
+
 var env = (function() {
     var ua = navigator.userAgent;
-    var testProd = ['127.0.0.1', 'localhost', '47.119.22.2', 'beta.oohla.shijianline.cn'];
+    var testProd = ['127.0.0.1', 'localhost'];
     var isProd = !testProd.some(function(item) {
         return window.location.host.indexOf(item) > -1
     });
     return {
-        isProd, // 是否线上环境
-        ios: !!ua.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/), //ios终端
-        android: ua.indexOf('Android') > -1 || ua.indexOf('Adr') > -1, //android终端
-        app: ua.indexOf('tiantianApp') > -1 || ua.indexOf('OohlaApp') > -1 //是否在app内
+        isProd,
+        ios: !!ua.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/),
+        android: ua.indexOf('Android') > -1 || ua.indexOf('Adr') > -1,
+        app: true // دائماً داخل التطبيق
     };
 })();
 
 $(document).ready(function() {
-    console.log("document ready");
-
-    // تعيين uid و token مباشرة
-    var uid = info.uid; 
-    var token = info.token;
-
-    if (env.app) {
-        appFun("getUid", function(e) {
-            info.uid = e || uid; // استخدام uid الثابت إذا لم يتم توفيره من التطبيق
-            appFun("getToken", function(e) {
-                info.token = e || token; // استخدام token الثابت إذا لم يتم توفيره من التطبيق
-                appFun("getLanguage", function(e) {
-                    info.lang = e || 'en'; // تعيين اللغة الافتراضية إذا لم يتم توفيرها
-                    init();
-                });
-            });
-        });
-    } else {
-        // تحديد القيم بناءً على بيئة العمل
-        info = {
-            uid: uid, // استخدام uid الثابت
-            token: token, // استخدام token الثابت
-            lang: 'en', // اللغة الافتراضية
-        };
+    console.log("Document ready");
+    
+    // انتظار معلومات اللاعب من التطبيق
+    if (window.flamingoPlayerInfo) {
+        info = window.flamingoPlayerInfo;
         init();
-    }
-
-    // إخفاء تعليمات iOS إذا لم يكن الجهاز iOS
-    if (!env.ios) {
-        $('#iosDesc').hide();
+    } else {
+        // انتظار قصير ثم المحاولة
+        setTimeout(function() {
+            if (window.flamingoPlayerInfo) {
+                info = window.flamingoPlayerInfo;
+            }
+            init();
+        }, 500);
     }
 });
 
-
-// $(document).ready(function () {
-//   info.uid = "10018";
-//   info.token = "4b3c45cf598eb6526ec3f031e7b18598";
-//   info.lang = "en";
-//   init();
-//   if (info.uid && info.uid == "95000103") {
-//     eruda.init();
-//     eruda.position({ y: 120, x: 120 });
-//   }
-// });
-
 function init() {
-    console.log("init enter");
+    console.log("Initializing game...");
     moment.tz.setDefault("Asia/Riyadh");
-    changeLang(info.lang);
+    changeLang(info.lang || 'en');
     showHand();
     bindEvent();
     getInfo();
@@ -104,7 +118,6 @@ function showHand() {
         } else {
             $(".hand").removeClass("hand" + (count - 1));
         }
-
         $(".hand").addClass("hand" + count);
         count++;
         if (count > 8) {
@@ -122,7 +135,6 @@ function showResult(result, topList, winGold, avatar) {
     if (winGold && winGold > 0) {
         $(".prize").show();
         $(".reword_word>div:first-child>div:last-child")[0].innerHTML = winGold;
-        console.log(avatar);
         $(".prize .self img").attr("src", avatar);
         $(".reword_word>div img:last-child").attr(
             "src",
@@ -136,9 +148,9 @@ function showResult(result, topList, winGold, avatar) {
         );
     }
     if (info.lang == "ar") {
-        $(".reword .roundWord").html("طلقة" + (round - 1) + " نتيجة");
+        $(".reword .roundWord").html("جولة " + (round - 1) + " النتيجة");
     } else {
-        $(".reword .roundWord").html("The result of " + (round - 1) + " round：");
+        $(".reword .roundWord").html("The result of " + (round - 1) + " round:");
     }
     var innerHTML = "";
     for (var i = 0; i < topList.length; i++) {
@@ -174,8 +186,6 @@ function showResult(result, topList, winGold, avatar) {
 }
 
 function countDown() {
-    // countTime--;
-    // $('.coutDown')[0].innerHTML = countTime + 's'
     if (countTimer) {
         clearInterval(countTimer);
     }
@@ -194,69 +204,66 @@ function countDown() {
 function openDraw() {
     getInfo(round);
 }
-function sureClick(choice, index) {
-    // تعيين القيم الثابتة مباشرةل الطلب إلى الخادم
-    $.ajax({
-        url: "/appapi/Frot/choice", // رابط API الخلفية
-       data: {
-            uid: info.uid,
-            token: info.token,
-            choice: choice,
-            gold: currentGold,
-            round: round,
-            language: info.lang,
-            _t: new Date().getTime(),
-        },
-        method: "post",
-        success: function(res) {
-            console.log(res);
-            console.log(index);
-            if (res.code == 200) {
-                getInfo(null, true);
-                selectCount += 1;
-                var isHas = false;
-                for (var i = 0; i < selectArr.length; i++) {
-                    if (selectArr[i] == choice) {
-                        isHas = true;
-                    }
-                }
-                if (!isHas) {
-                    selectArr.push(choice);
-                }
-                console.log("selectCountselectCount", selectCount);
-                // ['g','h', 'a', 'b', 'c', 'd', 'e', 'f']
-                //  0   1   2     3    4    5    6    7
-                var list = [6, 7, 8, 1, 2, 3, 4, 5];
-                var temp = $(
-                    ".item" + list[index] + " .selected div:nth-child(2) div"
-                )[0].innerHTML;
 
-                $(
-                    ".item" + list[index] + " .selected div:nth-child(2) div"
-                )[0].innerHTML = parseInt(temp) + parseInt(currentGold);
-                $(".item" + list[index] + " .selected").show();
-                // TODO: 手动设置余额
-            } else if (res.code == 10062) {
-                showSuccess("please recharge");
-            } else {
-                showSuccess(res.message);
+function sureClick(choice, index) {
+    // التحقق من الرصيد
+    let currentBalance = parseFloat($('.balanceCount').text());
+    if (currentBalance < currentGold) {
+        showSuccess(info.lang == "ar" ? "رصيد غير كافٍ!" : "Insufficient balance!");
+        return;
+    }
+
+    // تحديث الرصيد مؤقتاً
+    $('.balanceCount').text((currentBalance - currentGold).toFixed(2));
+
+    // إرسال الطلب عبر التطبيق (آمن)
+    callFlamingoApp('game_choice', {
+        choice: choice,
+        gold: currentGold
+    }).then(function(res) {
+        console.log("Choice response:", res);
+        if (res.code == 200) {
+            selectCount += 1;
+            if (!selectArr.includes(choice)) {
+                selectArr.push(choice);
             }
-        },
-        fail: function() {
-            showSuccess("System Error");
-        },
+
+            var list = [6, 7, 8, 1, 2, 3, 4, 5];
+            var temp = $(`.item${list[index]} .selected div:nth-child(2) div`)[0].innerHTML;
+            $(`.item${list[index]} .selected div:nth-child(2) div`)[0].innerHTML = 
+                parseInt(temp) + parseInt(currentGold);
+            $(`.item${list[index]} .selected`).show();
+
+            // تحديث الرصيد
+            if (res.balance !== undefined) {
+                $('.balanceCount').text(parseFloat(res.balance).toFixed(2));
+            }
+            
+            // إعلام التطبيق بتحديث الرصيد
+            sendToApp({ action: 'refreshBalance' });
+        } else if (res.code == 10062) {
+            showSuccess(info.lang == "ar" ? "يرجى الشحن" : "Please recharge");
+            // إعادة الرصيد
+            $('.balanceCount').text(currentBalance.toFixed(2));
+        } else {
+            showSuccess(res.message || 'Error');
+            $('.balanceCount').text(currentBalance.toFixed(2));
+        }
+    }).catch(function(error) {
+        console.error("Choice error:", error);
+        showSuccess(info.lang == "ar" ? "خطأ في النظام" : "System Error");
+        $('.balanceCount').text(currentBalance.toFixed(2));
     });
 }
-
 
 function roll(dir) {
     hideHand();
     selectCount = 0;
     selectArr = [];
     $(".title1").hide();
-    // $('.coutDown').hide();
     $(".title2").show();
     $(".coutDown")[0].innerHTML = countTime + "s";
+    
     var countTimer = setInterval(function() {
         countTime--;
         if (countTime <= 0) {
@@ -271,6 +278,7 @@ function roll(dir) {
         }
         $(".coutDown")[0].innerHTML = countTime + "s";
     }, 1000);
+    
     for (var i = 0; i < $(".item .gray").length; i++) {
         $(".item" + (i + 1) + " .selected div:nth-child(2) div")[0].innerHTML = 0;
         $(".item" + (i + 1) + " .selected").hide();
@@ -278,6 +286,7 @@ function roll(dir) {
         $($(".item .gray")[i]).show();
     }
     $($(".item .gray")[rollCount]).hide();
+    
     rollTimer = setInterval(function() {
         for (var i = 0; i < $(".item .gray").length; i++) {
             $($(".item .gray")[i]).show();
@@ -288,15 +297,10 @@ function roll(dir) {
         }
         $($(".item .gray")[rollCount]).hide();
     }, 100);
+    
     countTime = 10;
-    // openDrawTimer = setTimeout(function () {
-    //     clearInterval(rollTimer);
-    //     for (var i = 0; i < $('.item .gray').length; i++) {
-    //         $($('.item .gray')[i]).hide()
-    //     }
-    //     openDraw();
-    // }, 10000)
 }
+
 var hideLock = false;
 
 function bindEvent() {
@@ -306,373 +310,251 @@ function bindEvent() {
         }
         $(this).addClass("active");
         currentGold = goldList[$(this).data("index")];
-        console.log(currentGold);
+        console.log("Selected gold:", currentGold);
     });
+    
     try {
         document.addEventListener("visibilitychange", function() {
             if (document.hidden) {
-                // 页面被挂起
                 hideLock = true;
                 sessionStorage.setItem("currentRound", round);
-                if (countTimer) {
-                    clearInterval(countTimer);
-                }
+                if (countTimer) clearInterval(countTimer);
             } else {
                 if (hideLock) {
                     hideLock = false;
                     getInfo();
                 }
-                // 页面呼出
             }
         });
-    } catch (error) {}
+    } catch (e) {
+        console.error("Visibility change error:", e);
+    }
 
-    $("body").click(function() {
-        console.log(111);
-        appFun("closeWin", function() {});
-    });
+    // ربط أحداث النقر على الفواكه
+    for (var i = 0; i < 8; i++) {
+        (function(index) {
+            $(".item" + (index + 1)).click(function() {
+                if (status === 0) {
+                    var choice = choiceList[index];
+                    sureClick(choice, index);
+                }
+            });
+        })(i);
+    }
+}
 
-    $(".content").click(function(e) {
-        e.stopPropagation();
-    });
-
-    $(".item").click(function() {
-        console.log($(this).data("index"));
-        if (status == 0) {
-            for (var i = 0; i < $(".item").length; i++) {
-                $(".item" + (i + 1)).removeClass("active");
+/**
+ * دالة آمنة للاتصال بـ Parse عبر التطبيق
+ * بدلاً من الاتصال المباشر بـ Parse Server
+ */
+function callFlamingoApp(action, params) {
+    return new Promise(function(resolve, reject) {
+        var requestId = 'req_' + (++requestIdCounter) + '_' + Date.now();
+        
+        // تخزين callback
+        pendingRequests[requestId] = {
+            resolve: resolve,
+            reject: reject
+        };
+        
+        // إرسال الطلب للتطبيق
+        var message = JSON.stringify({
+            action: action,
+            requestId: requestId,
+            params: params || {}
+        });
+        
+        console.log("Sending to app:", message);
+        
+        if (window.FlamingoApp) {
+            window.FlamingoApp.postMessage(message);
+        } else {
+            reject('FlamingoApp not available');
+        }
+        
+        // Timeout بعد 30 ثانية
+        setTimeout(function() {
+            if (pendingRequests[requestId]) {
+                delete pendingRequests[requestId];
+                reject('Request timeout');
             }
-            console.log("selectCountselectCount", selectCount);
-            // if (selectCount > 5) {
-            //     showSuccess('Max Selected')
-            //     return
-            // }
-            var isHas = false;
-            for (var i = 0; i < selectArr.length; i++) {
-                if (selectArr[i] == choiceList[$(this).data("index")]) {
-                    isHas = true;
+        }, 30000);
+    });
+}
+
+// إرسال رسالة بسيطة للتطبيق (بدون انتظار رد)
+function sendToApp(data) {
+    if (window.FlamingoApp) {
+        window.FlamingoApp.postMessage(JSON.stringify(data));
+    }
+}
+
+function getRank() {
+    callFlamingoApp('game_rank').then(function(res) {
+        console.log("Rank response:", res);
+        if (res.code == 200 && res.data) {
+            var innerHTML = "";
+            var topHTML = "";
+            
+            for (var i = 0; i < res.data.length; i++) {
+                var item = res.data[i];
+                if (i < 3) {
+                    topHTML +=
+                        '<div class="personItem"><div class="logoArea"><div class="logo"><img src="' +
+                        item.avatar +
+                        '" alt=""></div> <img class="no' +
+                        (i + 1) +
+                        '" src="images/no' +
+                        (i + 1) +
+                        '.png" alt=""></div><div class="nick">' +
+                        item.nick +
+                        '</div><div class="flex ac jc"><img src="images/gold.png" alt=""><div>' +
+                        item.total +
+                        "</div></div></div>";
+                } else {
+                    innerHTML +=
+                        '<div class="rank-list-item flex ac js"><div class="inner-item">' +
+                        (i + 1) +
+                        '</div><div class="inner-item"><div class="logo"><img src="' +
+                        item.avatar +
+                        '" alt=""></div></div><div class="inner-item">' +
+                        item.nick +
+                        '</div><div class="inner-item"><img src="images/gold.png" alt=""><div>' +
+                        item.total +
+                        "</div></div></div>";
                 }
             }
-            if (selectArr.length > 5 && !isHas) {
-                showSuccess("Max Selected");
+            $(".topThree").html(topHTML);
+            $(".topList").html(innerHTML);
+        }
+    }).catch(function(error) {
+        console.error("Rank error:", error);
+    });
+}
+
+function getInfo(_round, isChoice) {
+    console.log("Getting game info...");
+    
+    var params = {};
+    if (_round) {
+        params.round = _round;
+    }
+    
+    callFlamingoApp('game_info', params).then(function(res) {
+        console.log("Info response:", res);
+        if (res.code === 200 && res.data) {
+            if (res.data.countdown && res.data.countdown < 0) {
+                showSuccess(info.lang == "ar" ? "خطأ في النظام، جاري إعادة الاتصال..." : "System Error, reconnecting...");
+                
+                if (countTimer) clearInterval(countTimer);
+                if (handTimer) clearInterval(handTimer);
+                if (rollTimer) clearInterval(rollTimer);
+                if (resultTimer) clearInterval(resultTimer);
+                
+                setTimeout(function() {
+                    getInfo();
+                    showHand();
+                }, 800);
                 return;
             }
 
-            sureClick(choiceList[$(this).data("index")], $(this).data("index"));
-        }
-    });
-    $(".records").click(function() {
-        getBill();
-        $(".recordsBg").show();
-    });
-    $(".recordsBg .modalBack").click(function() {
-        $(".recordsBg").hide();
-    });
+            $(".balanceCount")[0].innerHTML = parseFloat(res.data.gold).toFixed(2);
+            $(".profitCount")[0].innerHTML = res.data.profit || 0;
+            $(".round")[0].innerHTML = (info.lang == "ar" ? "جولة " : "Round ") + res.data.round;
 
-    $(".rule").click(function() {
-        $(".ruleBg").show();
-    });
-    $(".ruleBg").click(function() {
-        $(".ruleBg").hide();
-    });
+            if (status == 1 && isChoice) return;
+            round = res.data.round;
 
-    $(".rank").click(function() {
-        getRank();
-        $(".rankBg").show();
-    });
-    $(".rankBg .modalBack").click(function() {
-        $(".rankBg").hide();
-    });
-    $(".reword").click(function(e) {
-        e.stopPropagation();
-    });
-
-    // $('.rewordBtn').click(function (e) {
-    //     getRewradTop()
-    //     $('.rewardBg').show()
-    // })
-
-    $(".rewardBg .modalBack").click(function() {
-        $(".rewardBg").hide();
-    });
-
-    $(".rewordNo").click(function(e) {
-        e.stopPropagation();
-    });
-    $(".pop-success").click(function(e) {
-        e.stopPropagation();
-    });
-}function getRewradTop() {
-    // تعيين القيم الثابتة مباشرة
-  
-
-    $.ajax({
-        url: "/appapi/Frot/yesterday", // رابط API الخلفية
-        data: {
-           uid: info.uid,
-        token: info.token,
-            _t: new Date().getTime(), // منع الكاش
-            language: info.lang, // اللغة الحالية
-            
-        },
-        method: "POST",
-        success: function(res) {
-            if (res.code === 200) {
-                if (res.data && res.data.top3List && res.data.top3List.length) {
-                    var top3List = res.data.top3List;
-                    var tempHtml = "";
-                    for (var i = 0; i < top3List.length; i++) {
-                        tempHtml +=
-                            '<div class="_top' +
-                            (i + 1) +
-                            " top" +
-                            (i + 1) +
-                            '"><div class="topLogo"><div class="logo"><img src="' +
-                            top3List[i].avatar +
-                            '" alt=""></div><img src="images/top' +
-                            (i + 1) +
-                            '.png" alt=""></div><div class="nick">' +
-                            top3List[i].nick +
-                            "</div></div>";
-                    }
-                    $(".rewardTop3").html(tempHtml);
-                }
-            } else {
-                console.error("Error in response:", res.message);
+            if (!isChoice) {
+                countTime = res.data.countdown;
+                $(".coutDown")[0].innerHTML = countTime + "s";
+                
+                if (countTimer) clearInterval(countTimer);
+                countDown();
             }
-        },
-        error: function(xhr, status, error) {
-            console.error("AJAX request failed:", error);
-        },
-    });
-}
-function getRank() {
-    // تعيين القيم الثابتة مباشر
-    $.ajax({
-        url: "/appapi/Frot/rank", // رابط API الخلفية
-        data: {
-            uid: info.uid,
-        token: info.token,
-            _t: new Date().getTime(), // منع الكاش
-           
-            language: info.lang, // اللغة الحالية
-        },
-        method: "POST",
-        success: function(res) {
-            if (res.code === 200) {
-                var innerHTML = "";
-                var topHTML = "";
 
-                if (res.data && res.data.length) {
-                    // عرض أفضل 3 مستخدمين
-                    for (var i = 0; i < Math.min(3, res.data.length); i++) {
-                        var top = res.data[i];
-                        topHTML +=
-                            '<div class="top' +
-                            (i + 1) +
-                            '"><div class="topLogo"><div class="logo"><img src="' +
-                            top.avatar +
-                            '" alt=""></div><img src="images/top' +
-                            (i + 1) +
-                            '.png" alt=""></div><div class="nick">' +
-                            top.nick +
-                            '</div><div class="price flex ac jc"><img src="images/gold.png" alt=""><div>' +
-                            top.total +
-                            '</div></div></div>';
-                    }
+            $(".title2").hide();
+            $(".title1").show();
 
-                    // عرض باقي المستخدمين (الترتيب من 4 فما فوق)
-                    for (var i = 3; i < res.data.length; i++) {
-                        var tempItem = res.data[i];
-                        innerHTML +=
-                            '<div class="topItem flex ac"><div class="rankCount">' +
-                            (i + 1) +
-                            '</div><div class="head"><img src="' +
-                            tempItem.avatar +
-                            '" alt=""></div><div class="name">' +
-                            tempItem.nick +
-                            '</div><div class="score flex ac"><div class="scoreRank">' +
-                            tempItem.total +
-                            '</div><img src="images/gold.png" alt=""></div></div>';
-                    }
-
-                    $(".topThree").html(topHTML);
-                    $(".topList").html(innerHTML);
-                }
-            } else {
-                console.error("Error in response:", res.message);
+            // نتيجة الجولة السابقة
+            if (res.data.result && res.data.result != "") {
+                $(".item" + searchGift(res.data.result)).addClass("active");
+                $(".noPrize1>div img:last-child").attr(
+                    "src",
+                    "images/gift_" + searchGift(res.data.result) + ".png"
+                );
             }
-        },
-        error: function(xhr, status, error) {
-            console.error("Error in AJAX request:", error);
-        },
-    });
-}
-function getInfo(_round, isChoice) {
 
-    var data = {
-         uid: info.uid, // UID من PHP
-            token: info.token, // Token من PHP
-        _t: new Date().getTime(),
-        language: info.lang,
-    };
-    if (_round) {
-        data.round = _round;
-    }
-    console.log("getInfo enter");
-    $.ajax({
-        url: "/appapi/Frot/info", // رابط API الخلفية
-        data: data,
-        success: function(res) {
-            console.log(res);
-            if (res.code === 200) {
-               if (res.data) {
-                    if (res.data.countdown && res.data.countdown < 0) {
-                        showSuccess("System Error, connetting...");
-
-                        if (countTimer) {
-                            clearInterval(countTimer);
-                        }
-                        if (handTimer) {
-                            clearInterval(handTimer);
-                        }
-                        if (rollTimer) {
-                            clearInterval(rollTimer);
-                        }
-                        if (resultTimer) {
-                            clearInterval(resultTimer);
-                        }
-
-                        setTimeout(function() {
-                            getInfo();
-                            showHand();
-                        }, 800);
-                        return;
-                    }
-
-                    $(".balanceCount")[0].innerHTML = res.data.gold.toFixed(2);
-                    $(".profitCount")[0].innerHTML = res.data.profit;
-                    $(".round")[0].innerHTML = "Round " + res.data.round;
-
-                    // 还在抽奖中，不改变以下的值，如果round改变了，就拿不到中奖结果
-                    if (status == 1 && isChoice) return;
-                    round = res.data.round;
-                    // status = 0;
-
-                    // 下注不重新设置倒计时
-                    if (!isChoice) {
-                        countTime = res.data.countdown;
-                        $(".coutDown")[0].innerHTML = countTime + "s";
-
-                        if (countTimer) {
-                            clearInterval(countTimer);
-                        }
-                        countDown();
-                    }
-
-                    $(".title2").hide();
-                    $(".title1").show();
-                    // $('.coutDown').show();
-
-                    // 本轮中奖结果设置
-                    if (res.data.result && res.data.result != "") {
-                        // 设置
-                        $(".item" + searchGift(res.data.result)).addClass("active");
-                        $(".noPrize1>div img:last-child").attr(
-                            "src",
-                            "images/gift_" + searchGift(res.data.result) + ".png"
-                        );
-                    }
-
-                    // 结果记录列表
-                    var giftListHtml = "";
-                    res.data.resultList = res.data.resultList.reverse();
-                    for (var i = 0; i < res.data.resultList.length; i++) {
-                        var _index = searchGift(res.data.resultList[i]);
-                        if (i == 0) {
-                            giftListHtml +=
-                                '<div class="giftItem"><img src="images/gift_' +
-                                _index +
-                                '.png" alt=""><img src="images/new.png" alt=""></div>';
-                        } else {
-                            giftListHtml +=
-                                '<div class="giftItem"><img src="images/gift_' +
-                                _index +
-                                '.png" alt=""></div>';
-                        }
-                    }
-
-                    $(".giftList").html(giftListHtml);
-
-                    if (_round) {
-                        clearInterval(handTimer);
-                        showHand();
-                    }
-
-                    // 显示用户已选的食物以及金额
-                    if (res.data.select && Object.keys(res.data.select).length) {
-                        var ak = Object.keys(res.data.select);
-                        var vk = Object.values(res.data.select);
-                        for (var i = 0; i < ak.length; i++) {
-                            var temp = $(
-                                ".item" + searchGift(ak[i]) + " .selected div:nth-child(2) div"
-                            )[0].innerHTML;
-
-                            $(
-                                ".item" + searchGift(ak[i]) + " .selected div:nth-child(2) div"
-                            )[0].innerHTML = vk[i];
-                            $(".item" + searchGift(ak[i]) + " .selected").show();
-                        }
-                    } else {
-                        for (var i = 0; i < $(".item .gray").length; i++) {
-                            $(
-                                ".item" + (i + 1) + " .selected div:nth-child(2) div"
-                            )[0].innerHTML = 0;
-                            $(".item" + (i + 1) + " .selected").hide();
-                        }
-                    }
-
-                    // 公布结果
-                    if (_round && res.data.top && res.data.top.length) {
-                        // if(res.data.top && res.data.top.length) {
-                        // 公布结果
-                        showResult(
-                            res.data.result,
-                            res.data.top,
-                            res.data.winGold,
-                            res.data.avatar
-                        );
-                    } else if (_round) {
-                        if (info.lang == "ar") {
-                            $(".rewordNo .roundWord").html("طلقة" + (round - 1) + " نتيجة");
-                        } else {
-                            $(".rewordNo .roundWord").html(
-                                "The result of " + (round - 1) + " round："
-                            );
-                        }
-
-                        resultTimer = setInterval(function() {
-                            resultCount--;
-                            if (resultCount < 0) {
-                                resultCount = 5;
-                                clearInterval(resultTimer);
-                                $(".rewordNo").hide();
-                            }
-                            $(".rewordNo .reword_content .countDown")[0].innerHTML =
-                                resultCount + "s";
-                        }, 1000);
-                        $(".rewordNo").show();
-                    }
+            // قائمة النتائج
+            var giftListHtml = "";
+            var resultList = (res.data.resultList || []).reverse();
+            for (var i = 0; i < resultList.length; i++) {
+                var _index = searchGift(resultList[i]);
+                if (i == 0) {
+                    giftListHtml +=
+                        '<div class="giftItem"><img src="images/gift_' +
+                        _index +
+                        '.png" alt=""><img src="images/new.png" alt=""></div>';
                 } else {
-                    showSuccess("System Error");
+                    giftListHtml +=
+                        '<div class="giftItem"><img src="images/gift_' +
+                        _index +
+                        '.png" alt=""></div>';
+                }
+            }
+            $(".giftList").html(giftListHtml);
+
+            if (_round) {
+                clearInterval(handTimer);
+                showHand();
+            }
+
+            // عرض الرهانات الحالية
+            if (res.data.select && Object.keys(res.data.select).length) {
+                var ak = Object.keys(res.data.select);
+                var vk = Object.values(res.data.select);
+                for (var i = 0; i < ak.length; i++) {
+                    $(".item" + searchGift(ak[i]) + " .selected div:nth-child(2) div")[0].innerHTML = vk[i];
+                    $(".item" + searchGift(ak[i]) + " .selected").show();
                 }
             } else {
-                // showSuccess(res.message)
+                for (var i = 0; i < $(".item .gray").length; i++) {
+                    $(".item" + (i + 1) + " .selected div:nth-child(2) div")[0].innerHTML = 0;
+                    $(".item" + (i + 1) + " .selected").hide();
+                }
             }
-        },
+
+            // عرض النتيجة
+            if (_round && res.data.top && res.data.top.length) {
+                showResult(
+                    res.data.result,
+                    res.data.top,
+                    res.data.winGold,
+                    res.data.avatar
+                );
+            } else if (_round) {
+                if (info.lang == "ar") {
+                    $(".rewordNo .roundWord").html("جولة " + (round - 1) + " النتيجة");
+                } else {
+                    $(".rewordNo .roundWord").html("The result of " + (round - 1) + " round:");
+                }
+                
+                resultTimer = setInterval(function() {
+                    resultCount--;
+                    if (resultCount < 0) {
+                        resultCount = 5;
+                        clearInterval(resultTimer);
+                        $(".rewordNo").hide();
+                    }
+                    $(".rewordNo .reword_content .countDown")[0].innerHTML = resultCount + "s";
+                }, 1000);
+                $(".rewordNo").show();
+            }
+        }
+    }).catch(function(error) {
+        console.error("Info error:", error);
     });
 }
-
 
 function searchGift(value) {
     var temp = 0;
@@ -682,115 +564,67 @@ function searchGift(value) {
             break;
         }
     }
-
     var list = [6, 7, 8, 1, 2, 3, 4, 5];
-
     return list[temp];
 }
+
 function getBill() {
-    $.ajax({
-        url: allUrl() + "/appapi/Frot/bill",
-        data: {
-            uid: info.uid,
-            _t: new Date().getTime(),
-            token: info.token,
-            language: info.lang,
-        },
-        success: function(res) {
-            console.log(res);
-            if (res.code == 200 && res.data) {
-                var innerHTML = "";
-                var list = [6, 7, 8, 1, 2, 3, 4, 5];
-                for (var i = 0; i < res.data.length; i++) {
-                    var tempItem = res.data[i];
-                    var isWin = tempItem.choice == tempItem.result;
-                    innerHTML +=
-                        '<div class="records-list-item flex ac js"><div class="inner-item">' +
-                        tempItem.gold +
-                        ' gold</div><div class="inner-item"> <img src="images/gift_' +
-                        searchGift(tempItem.choice) +
-                        '.png" alt=""> </div><div class="inner-item"><img src="images/gift_' +
-                        searchGift(tempItem.result) +
-                        '.png" alt=""></div><div class="inner-item"><div>' +
-                        changeWord(isWin) +
-                        "</div>" +
-                        (isWin ?
-                            "<div>(" +
-                            timesWord[searchGift(tempItem.result) - 1] +
-                            changeTimesWord() +
-                            ")</div>" :
-                            "") +
-                        '</div><div class="inner-item"><div>' +
-                        moment(tempItem.createTime).format("YYYY/MM/DD") +
-                        "</div><div>" +
-                        moment(tempItem.createTime).format("HH:mm:ss") +
-                        "</div></div></div>";
-                }
-                $(".records-list").html(innerHTML);
+    callFlamingoApp('game_bill').then(function(res) {
+        console.log("Bill response:", res);
+        if (res.code == 200 && res.data) {
+            var innerHTML = "";
+            var list = [6, 7, 8, 1, 2, 3, 4, 5];
+            
+            for (var i = 0; i < res.data.length; i++) {
+                var tempItem = res.data[i];
+                var isWin = tempItem.choice == tempItem.result;
+                innerHTML +=
+                    '<div class="records-list-item flex ac js"><div class="inner-item">' +
+                    tempItem.gold +
+                    ' gold</div><div class="inner-item"> <img src="images/gift_' +
+                    searchGift(tempItem.choice) +
+                    '.png" alt=""> </div><div class="inner-item"><img src="images/gift_' +
+                    (tempItem.result ? searchGift(tempItem.result) : '1') +
+                    '.png" alt=""></div><div class="inner-item"><div>' +
+                    changeWord(isWin) +
+                    "</div>" +
+                    (isWin ?
+                        "<div>(" +
+                        timesWord[searchGift(tempItem.result) - 1] +
+                        changeTimesWord() +
+                        ")</div>" :
+                        "") +
+                    '</div><div class="inner-item"><div>' +
+                    moment(tempItem.createTime).format("YYYY/MM/DD") +
+                    "</div><div>" +
+                    moment(tempItem.createTime).format("HH:mm:ss") +
+                    "</div></div></div>";
             }
-        },
+            $(".records-list").html(innerHTML);
+        }
+    }).catch(function(error) {
+        console.error("Bill error:", error);
     });
 }
 
 function changeTimesWord() {
-    if (info.lang == "ar") {
-        return "مرات";
-    } else {
-        return "times";
-    }
+    return info.lang == "ar" ? " مرات" : " times";
 }
 
 function changeWord(win) {
     if (info.lang == "ar") {
-        if (win) {
-            return "لا";
-        } else {
-            return "نعم";
-        }
+        return win ? "نعم" : "لا";
     } else {
-        if (win) {
-            return "Yes";
-        } else {
-            return "No";
-        }
+        return win ? "Yes" : "No";
     }
 }
-
-function getResult() {
-  
-    $.ajax({
-        url: "/appapi/Frot/getResult",
-        method: "POST",
-        data: {
-            uid: info.uid, // UID من PHP
-            token: info.token, // Token من PHP
-        },
-        success: function(res) {
-            console.log(res);
-            if (res.code === 200) {
-                // عرض النتيجة والفائزين
-                console.log("Round:", res.data.round);
-                console.log("Result:", res.data.result);
-                console.log("Winners:", res.data.winners);
-            } else {
-                console.error(res.message);
-            }
-        },
-        error: function(err) {
-            console.error("Error fetching result:", err);
-        }
-    });
-}
-
 
 function showSuccess(msg, fn) {
     $(".pop-success div")[0].innerHTML = msg;
     $(".pop-success").show();
     setTimeout(function() {
         $(".pop-success div")[0].innerHTML = "";
-        if (fn) {
-            fn();
-        }
+        if (fn) fn();
         $(".pop-success").hide();
     }, 1500);
 }
@@ -810,6 +644,7 @@ function changeLang(defaultLang) {
             callback: function(res) {},
         });
     }
+    
     if (info.lang == "ar") {
         $(".records").attr("src", "images/btn_records@2x.png");
         $(".rule").attr("src", "images/btn_rule@2x.png");
@@ -817,4 +652,9 @@ function changeLang(defaultLang) {
     }
 
     languageSelect(defaultLang);
+}
+
+// دالة لإغلاق اللعبة
+function closeGame() {
+    sendToApp({ action: 'close' });
 }
