@@ -98,11 +98,32 @@ function init() {
     console.log("Initializing game...");
     moment.tz.setDefault("Asia/Riyadh");
     changeLang(info.lang || 'en');
+    
+    // اختبار النقرات أولاً
+    testClickEvents();
+    
     showHand();
-    bindEvent(); // تم نقل bindEvent هنا
+    bindEvent();
     getInfo();
     getBill();
     getRank();
+}
+
+function testClickEvents() {
+    console.log("=== Testing Click Events ===");
+    
+    // اختبار أن العناصر موجودة
+    for (var i = 1; i <= 8; i++) {
+        var $item = $(".item" + i);
+        console.log("Item" + i + " exists:", $item.length > 0, 
+                   "CSS pointer-events:", $item.css("pointer-events"),
+                   "CSS cursor:", $item.css("cursor"));
+        
+        // إضافة مؤقت للنقر للاختبار
+        $item.on('click.test', function() {
+            console.log("TEST CLICK on:", $(this).attr("class"));
+        });
+    }
 }
 
 function showHand() {
@@ -206,14 +227,24 @@ function openDraw() {
 }
 
 function sureClick(choice, index) {
-    console.log("SureClick called with choice:", choice, "index:", index, "currentGold:", currentGold);
+    console.log("=== sureClick called ===");
+    console.log("Choice:", choice, "Index:", index, "Current Gold:", currentGold);
+    console.log("Status:", status, "Select Count:", selectCount, "Select Arr:", selectArr);
     
     // التحقق من الرصيد
-    let currentBalance = parseFloat($('.balanceCount').text());
+    let currentBalance = parseFloat($('.balanceCount').text()) || 0;
     console.log("Current balance:", currentBalance);
     
     if (currentBalance < currentGold) {
+        console.log("Insufficient balance!");
         showSuccess(info.lang == "ar" ? "رصيد غير كافٍ!" : "Insufficient balance!");
+        return;
+    }
+
+    // تحقق إذا وصل الحد الأقصى للرهانات
+    if (selectCount >= 6) {
+        console.log("Maximum bets reached (6)");
+        showSuccess(info.lang == "ar" ? "وصلت للحد الأقصى من الرهانات!" : "Maximum bets reached!");
         return;
     }
 
@@ -232,16 +263,18 @@ function sureClick(choice, index) {
                 selectArr.push(choice);
             }
 
+            // تحديث الواجهة
             var list = [6, 7, 8, 1, 2, 3, 4, 5];
-            var itemIndex = list[index]; // تحويل الفهرس
+            var itemIndex = list[index];
             console.log("Updating item:", itemIndex, "with gold:", currentGold);
             
-            var selectedElement = $(`.item${itemIndex} .selected div:nth-child(2) div`);
-            if (selectedElement.length > 0) {
-                var temp = selectedElement[0].innerHTML;
-                selectedElement[0].innerHTML = 
-                    parseInt(temp) + parseInt(currentGold);
+            var selectedDiv = $(`.item${itemIndex} .selected div:nth-child(2) div`);
+            if (selectedDiv.length > 0) {
+                var currentAmount = parseInt(selectedDiv.text()) || 0;
+                var newAmount = currentAmount + currentGold;
+                selectedDiv.text(newAmount);
                 $(`.item${itemIndex} .selected`).show();
+                console.log("Item updated successfully");
             }
 
             // تحديث الرصيد
@@ -252,10 +285,12 @@ function sureClick(choice, index) {
             // إعلام التطبيق بتحديث الرصيد
             sendToApp({ action: 'refreshBalance' });
         } else if (res.code == 10062) {
+            console.log("Insufficient credits");
             showSuccess(info.lang == "ar" ? "يرجى الشحن" : "Please recharge");
             // إعادة الرصيد
             $('.balanceCount').text(currentBalance.toFixed(2));
         } else {
+            console.log("Error response:", res);
             showSuccess(res.message || 'Error');
             $('.balanceCount').text(currentBalance.toFixed(2));
         }
@@ -316,31 +351,79 @@ var hideLock = false;
 function bindEvent() {
     console.log("Binding events...");
     
-    // ربط أحداث النقر على الفواكه - إصلاح كامل
-    for (var i = 0; i < 8; i++) {
-        (function(index) {
-            // استخدام الفهرس الصحيح بناءً على choiceList
-            var choice = choiceList[index];
-            var itemIndex = i + 1; // عناصر HTML تبدأ من 1
-            
-            console.log("Setting click for item:", itemIndex, "with choice:", choice);
-            
-            $(".item" + itemIndex).off('click').on('click', function() {
-                console.log("Item clicked:", itemIndex, "Status:", status, "Choice:", choice);
-                if (status === 0) {
-                    sureClick(choice, index);
-                } else {
-                    console.log("Cannot bet now, status is:", status);
-                }
-            });
-        })(i);
-    }
+    // أولاً: إزالة جميع الأحداث السابقة لمنع التكرار
+    $(".item").off('click');
+    $(".clickArea .clickItem").off('click');
     
-    $(".clickArea .clickItem").off('click').on('click', function() {
+    // ثانياً: ربط أحداث النقر على الفواكه - الطريقة الصحيحة
+    $(".item").each(function(index) {
+        var $item = $(this);
+        var itemIndex = parseInt($item.attr("class").match(/item(\d+)/)[1]);
+        var dataIndex = parseInt($item.data("index"));
+        
+        console.log("Setting up item:", itemIndex, "data-index:", dataIndex);
+        
+        $item.on('click', function(e) {
+            console.log("Item clicked:", itemIndex, "Status:", status, "Position:", e.pageX, e.pageY);
+            
+            // منع النقر أثناء السحب
+            if (status !== 0) {
+                console.log("Cannot bet now, status is:", status);
+                return;
+            }
+            
+            // البحث عن الاختيار المناسب من data-index
+            var choice = null;
+            switch(dataIndex) {
+                case 0: choice = "g"; break;
+                case 1: choice = "h"; break;
+                case 2: choice = "a"; break;
+                case 3: choice = "b"; break;
+                case 4: choice = "c"; break;
+                case 5: choice = "d"; break;
+                case 6: choice = "e"; break;
+                case 7: choice = "f"; break;
+            }
+            
+            if (choice) {
+                // حساب index لـ choiceList
+                var choiceIndex = choiceList.indexOf(choice);
+                if (choiceIndex !== -1) {
+                    console.log("Calling sureClick with choice:", choice, "index:", choiceIndex);
+                    sureClick(choice, choiceIndex);
+                } else {
+                    console.error("Choice not found:", choice);
+                }
+            } else {
+                console.error("Invalid data-index:", dataIndex);
+            }
+        });
+    });
+    
+    // ربط أحداث النقر على اختيار الذهب
+    $(".clickArea .clickItem").on('click', function() {
         $(".clickItem").removeClass("active");
         $(this).addClass("active");
         currentGold = goldList[$(this).data("index")];
         console.log("Selected gold:", currentGold);
+    });
+    
+    // ربط أحداث الأزرار الأخرى
+    $(".btn.records").off('click').on('click', function() {
+        $(".recordsBg").show();
+    });
+    
+    $(".btn.rule").off('click').on('click', function() {
+        $(".ruleBg").show();
+    });
+    
+    $(".btn.rank").off('click').on('click', function() {
+        $(".rankBg").show();
+    });
+    
+    // إغلاق النوافذ المنبثقة
+    $(".modalBack, .ruleContent>img").off('click').on('click', function() {
+        $(".recordsBg, .ruleBg, .rankBg, .rewardBg").hide();
     });
     
     try {
@@ -359,6 +442,8 @@ function bindEvent() {
     } catch (e) {
         console.error("Visibility change error:", e);
     }
+    
+    console.log("Events bound successfully");
 }
 
 /**
