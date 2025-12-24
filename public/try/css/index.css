@@ -155,14 +155,12 @@
     transform: translateX(-50%);
     top: 1.4rem;
     height: 10.88rem;
-    z-index: 20; /* رفع محتوى اللعبة فوق الخلفيات */
 }
 
 .item {
     position: absolute;
     width: 1.52rem;
     height: 1.52rem;
-    z-index: 21; /* تأكد أن العناصر قابلة للنقر فوق عناصر أخرى */
 }
 
 .item>img {
@@ -1420,15 +1418,4 @@
     left: 50%;
     bottom: 0.28rem;
     transform: translateX(-50%);
-}
-
-/* Ensure overlay elements don't block clicks on the underlying item itself */
-.item .gray {
-    pointer-events: none;
-}
-
-/* If .selected is shown but we still want underlying item clicks, allow pointer-events pass-through */
-.item .selected {
-    pointer-events: none;
-}
 }
