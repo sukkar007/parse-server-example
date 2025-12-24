@@ -1,8 +1,5 @@
 /**
- * لعبة عجلة الفواكه - نسخة آمنة - تصحيح كامل لمشكلة النقر
- * الإصدار: 2.0
- * تاريخ: 2024
- * وصف: إصلاح كامل لمشكلة status وتمكين النقر على الفواكه بشكل صحيح
+ * لعبة عجلة الفواكه - الإصلاح النهائي لمشكلة "اللعبة غير جاهزة"
  */
 
 var count = 4;
@@ -38,17 +35,16 @@ var info = window.flamingoPlayerInfo || {
 var pendingRequests = {};
 var requestIdCounter = 0;
 
-console.log("🎮 بدء تحميل لعبة عجلة الفواكه");
-console.log("👤 معلومات اللاعب:", info);
+console.log("🎮 بدء تحميل لعبة عجلة الفواكه - الإصدار 3.0");
 
 window.onFlamingoPlayerInfo = function(playerInfo) {
     info = playerInfo;
-    console.log("📥 تم استقبال معلومات اللاعب:", info);
+    console.log("📥 معلومات اللاعب:", info);
     init();
 };
 
 window.onFlamingoResponse = function(response) {
-    console.log("📤 استجابة من التطبيق:", response);
+    console.log("📤 استجابة التطبيق:", response);
     
     var requestId = response.requestId;
     if (requestId && pendingRequests[requestId]) {
@@ -62,20 +58,6 @@ window.onFlamingoResponse = function(response) {
         }
     }
 };
-
-var env = (function() {
-    var ua = navigator.userAgent;
-    var testProd = ['127.0.0.1', 'localhost'];
-    var isProd = !testProd.some(function(item) {
-        return window.location.host.indexOf(item) > -1
-    });
-    return {
-        isProd,
-        ios: !!ua.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/),
-        android: ua.indexOf('Android') > -1 || ua.indexOf('Adr') > -1,
-        app: true
-    };
-})();
 
 $(document).ready(function() {
     console.log("✅ المستند جاهز");
@@ -95,7 +77,11 @@ $(document).ready(function() {
 
 function init() {
     console.log("🚀 تهيئة اللعبة...");
-    status = 0; // تأكد من أن status = 0 عند البداية
+    
+    // ✅ التأكد من أن status = 0 عند البداية
+    status = 0;
+    console.log("✨ status = 0 (جاهز للرهان)");
+    
     moment.tz.setDefault("Asia/Riyadh");
     changeLang(info.lang || 'en');
     showHand();
@@ -103,8 +89,6 @@ function init() {
     getInfo();
     getBill();
     getRank();
-    
-    console.log("✨ اللعبة جاهزة! status =", status);
 }
 
 function showHand() {
@@ -169,10 +153,6 @@ function showResult(result, topList, winGold, avatar) {
             topList[i].total +
             "</div></div></div>";
     }
-    for (var i = 0; i < 3 - topList.length; i++) {
-        innerHTML +=
-            '<div class="personItem"><div class="logoArea"><div class="logo"><img src="" alt=""></div></div><div class="nick"></div><div class="flex ac jc"></div></div>';
-    }
     $(".reword_person").html(innerHTML);
     resultTimer = setInterval(function() {
         resultCount--;
@@ -188,15 +168,31 @@ function showResult(result, topList, winGold, avatar) {
 }
 
 function countDown() {
+    console.log("⏱️ بدء العد التنازلي:", countTime, "ثانية");
+    
+    // ✅ إيقاف أي مؤقت سابق
     if (countTimer) {
         clearInterval(countTimer);
     }
+    
+    // ✅ التأكد من أن status = 0 أثناء العد التنازلي للرهان
+    if (status !== 0) {
+        console.log("⚠️ تصحيح: status كان", status, "سيتم تعيينه إلى 0");
+        status = 0;
+    }
+    
     countTimer = setInterval(function() {
         countTime--;
+        console.log("⏰ الوقت المتبقي:", countTime, "ثانية، status:", status);
+        
         if (countTime <= 0) {
             countTime = 0;
-            status = 1; // منع النقر أثناء السحب
-            console.log("⏰ العد التنازلي انتهى، بدء السحب. status:", status);
+            console.log("⏰ انتهى وقت الرهان، بدء السحب");
+            
+            // ✅ تعيين status = 1 فقط عند بدء السحب الفعلي
+            status = 1;
+            console.log("🔒 status = 1 (بدء السحب)");
+            
             roll();
             clearInterval(countTimer);
         }
@@ -205,23 +201,53 @@ function countDown() {
 }
 
 function openDraw() {
-    console.log("🎮 فتح مرحلة الرهان");
+    console.log("🎮 فتح مرحلة الرهان الجديدة");
     
     // ✅ تعيين status إلى 0 فوراً
     status = 0;
-    console.log("✓ openDraw() - status = 0 (جاهز للرهان)");
+    console.log("🔓 status = 0 (جاهز للرهان في الجولة الجديدة)");
     
     getInfo(round);
     
-    // ✅ إظهار يد المؤشر بعد فترة قصيرة
+    // ✅ إظهار اليد بعد فترة قصيرة
     setTimeout(function() {
         showHand();
-        console.log("👆 اليد معروضة، يمكن النقر الآن");
+        console.log("👆 تم إظهار اليد - يمكن النقر الآن");
+        
+        // ✅ إظهار رسالة للمستخدم
+        showSuccess(info.lang == "ar" ? "يمكنك الرهان الآن!" : "You can bet now!");
     }, 300);
 }
 
 function sureClick(choice, index) {
-    console.log("🎯 معالجة النقر على:", choice, "بمبلغ:", currentGold);
+    console.log("🎯 محاولة الرهان على:", choice, "بمبلغ:", currentGold);
+    console.log("📊 حالة النظام - status:", status, "countTime:", countTime);
+    
+    // ✅ التحقق من حالة النظام أولاً
+    if (status !== 0) {
+        console.log("❌ لا يمكن الرهان - status =", status);
+        
+        var message = "";
+        if (status === 1) {
+            message = info.lang == "ar" 
+                ? "جاري السحب، انتظر حتى النهاية" 
+                : "Drawing in progress, please wait";
+        } else {
+            message = info.lang == "ar" 
+                ? "اللعبة غير جاهزة" 
+                : "Game not ready";
+        }
+        
+        showSuccess(message);
+        return;
+    }
+    
+    // ✅ التحقق من وقت الرهان
+    if (countTime <= 0) {
+        console.log("❌ انتهى وقت الرهان");
+        showSuccess(info.lang == "ar" ? "انتهى وقت الرهان" : "Betting time ended");
+        return;
+    }
     
     let currentBalance = parseFloat($('.balanceCount').text());
     if (currentBalance < currentGold) {
@@ -230,6 +256,8 @@ function sureClick(choice, index) {
         return;
     }
 
+    console.log("✅ جميع الشروط صحيحة، معالجة الرهان...");
+    
     $('.balanceCount').text((currentBalance - currentGold).toFixed(2));
 
     callFlamingoApp('game_choice', {
@@ -255,18 +283,16 @@ function sureClick(choice, index) {
             
             sendToApp({ action: 'refreshBalance' });
             
-            console.log("💰 رهان ناجح! الرهانات الحالية:", selectArr);
+            console.log("💰 رهان ناجح! الرهانات:", selectArr);
         } else if (res.code == 10062) {
             showSuccess(info.lang == "ar" ? "يرجى الشحن" : "Please recharge");
             $('.balanceCount').text(currentBalance.toFixed(2));
-            console.log("💳 خطأ: رصيد غير كافي");
         } else {
             showSuccess(res.message || 'خطأ');
             $('.balanceCount').text(currentBalance.toFixed(2));
-            console.log("❌ خطأ في الرهان:", res.message);
         }
     }).catch(function(error) {
-        console.error("❌ خطأ في معالجة الرهان:", error);
+        console.error("❌ خطأ في الرهان:", error);
         showSuccess(info.lang == "ar" ? "خطأ في النظام" : "System Error");
         $('.balanceCount').text(currentBalance.toFixed(2));
     });
@@ -284,7 +310,7 @@ function roll(dir) {
     
     // ✅ تعيين status إلى 1 لمنع النقر أثناء السحب
     status = 1;
-    console.log("🔒 status = 1 (منع النقر أثناء السحب)");
+    console.log("🔒 status = 1 (سحب قيد التنفيذ)");
     
     var rollCountdown = countTime;
     
@@ -294,9 +320,9 @@ function roll(dir) {
         
         if (rollCountdown <= 0) {
             rollCountdown = 0;
-            console.log("✅ انتهى السحب، الانتقال لمرحلة الرهان");
+            console.log("✅ انتهى السحب");
             
-            // ✅ إيقاف جميع المؤقتات أولاً
+            // ✅ إيقاف جميع المؤقتات
             clearInterval(rollCountTimer);
             clearInterval(rollTimer);
             
@@ -305,19 +331,31 @@ function roll(dir) {
                 $($(".item .gray")[i]).hide();
             }
             
-            // ✅ إعادة تعيين status إلى 0 فوراً
+            // ✅ الانتقال المباشر لمرحلة الرهان
+            console.log("🔄 الانتقال لمرحلة الرهان...");
+            
+            // ✅ تعيين status = 0 مباشرة
             status = 0;
-            console.log("🔓 status = 0 (يمكن النقر الآن)");
+            console.log("🔓 status = 0 (جاهز للرهان)");
             
-            // ✅ فتح مرحلة الرهان الجديدة
-            openDraw();
+            // ✅ إعادة تعيين الوقت
+            countTime = 10;
             
-            // ✅ إظهار رسالة للمستخدم
-            if (info.lang == "ar") {
-                showSuccess("يمكنك الرهان الآن!");
-            } else {
-                showSuccess("You can bet now!");
-            }
+            // ✅ تحديث الواجهة مباشرة
+            $(".title2").hide();
+            $(".title1").show();
+            $(".coutDown")[0].innerHTML = countTime + "s";
+            
+            // ✅ الحصول على معلومات الجولة الجديدة
+            getInfo(round, false, true); // true يعني أن هذا بعد السحب
+            
+            // ✅ إظهار اليد مباشرة
+            setTimeout(function() {
+                showHand();
+                console.log("👆 تم إظهار اليد بعد السحب");
+            }, 500);
+            
+            return;
         }
     }, 1000);
     
@@ -330,7 +368,7 @@ function roll(dir) {
     }
     $($(".item .gray")[rollCount]).hide();
     
-    // ✅ مؤقت للحركة الدورانية
+    // ✅ مؤتمر للحركة الدورانية
     rollTimer = setInterval(function() {
         for (var i = 0; i < $(".item .gray").length; i++) {
             $($(".item .gray")[i]).show();
@@ -341,14 +379,10 @@ function roll(dir) {
         }
         $($(".item .gray")[rollCount]).hide();
     }, 100);
-    
-    countTime = 10;
 }
 
-var hideLock = false;
-
 function bindEvent() {
-    console.log("🔗 ربط الأحداث...");
+    console.log("🔗 ربط أحداث اللعبة...");
     
     // معالج اختيار الرقاقة
     $(".clickArea .clickItem").click(function() {
@@ -360,28 +394,7 @@ function bindEvent() {
         console.log("💰 تم اختيار المبلغ:", currentGold);
     });
     
-    // معالج رؤية الصفحة
-    try {
-        document.addEventListener("visibilitychange", function() {
-            if (document.hidden) {
-                hideLock = true;
-                sessionStorage.setItem("currentRound", round);
-                if (countTimer) clearInterval(countTimer);
-                console.log("📱 الصفحة مخفية");
-            } else {
-                if (hideLock) {
-                    hideLock = false;
-                    getInfo();
-                    console.log("📱 الصفحة ظاهرة مرة أخرى");
-                }
-            }
-        });
-    } catch (e) {
-        console.error("❌ خطأ في معالج visibilitychange:", e);
-    }
-
-    // معالج النقر على الفواكه - النسخة المحسنة
-    console.log("🍎 ربط أحداث النقر على الفواكه...");
+    // معالج النقر على الفواكه
     for (var i = 0; i < 8; i++) {
         (function(index) {
             $(".item" + (index + 1)).on("click", function(e) {
@@ -389,25 +402,27 @@ function bindEvent() {
                 e.stopPropagation();
                 
                 console.log("=== 🍎 نقر على فاكهة ===");
-                console.log("📊 حالة النظام: status =", status, "(0=يمكن النقر, 1=جاري السحب)");
-                console.log("🎯 فهرس الفاكهة:", index);
-                console.log("🏷️ اسم الفاكهة:", choiceList[index]);
-                console.log("⏱️ الوقت المتبقي:", countTime, "ثانية");
-                console.log("💰 المبلغ المختار:", currentGold);
+                console.log("📊 حالة النظام: status =", status);
+                console.log("⏱️ الوقت المتبقي:", countTime);
+                console.log("🔢 الفاكهة:", index);
                 
-                if (status === 0) {
+                // ✅ فحص شامل للحالة
+                if (status === 0 && countTime > 0) {
                     var choice = choiceList[index];
-                    console.log("✅ بدء معالجة الرهان على:", choice);
+                    console.log("✅ بدء معالجة الرهان");
                     sureClick(choice, index);
                 } else {
-                    console.log("⏳ لا يمكن الرهان الآن - status =", status);
+                    console.log("❌ لا يمكن الرهان الآن");
                     
-                    // ✅ رسالة أكثر وضوحاً للمستخدم
                     var message = "";
                     if (status === 1) {
                         message = info.lang == "ar" 
-                            ? "جاري السحب، انتظر حتى النهاية (" + countTime + " ثانية)" 
-                            : "Drawing in progress, wait until end (" + countTime + "s)";
+                            ? "جاري السحب، انتظر قليلاً" 
+                            : "Drawing in progress, please wait";
+                    } else if (countTime <= 0) {
+                        message = info.lang == "ar" 
+                            ? "انتهى وقت الرهان" 
+                            : "Betting time ended";
                     } else {
                         message = info.lang == "ar" 
                             ? "اللعبة غير جاهزة، حاول لاحقاً" 
@@ -420,7 +435,7 @@ function bindEvent() {
         })(i);
     }
     
-    console.log("✅ تم ربط جميع الأحداث بنجاح");
+    console.log("✅ تم ربط الأحداث");
 }
 
 function callFlamingoApp(action, params) {
@@ -438,7 +453,7 @@ function callFlamingoApp(action, params) {
             params: params || {}
         });
         
-        console.log("📤 إرسال إلى التطبيق:", message);
+        console.log("📤 إرسال:", action);
         
         if (window.FlamingoApp) {
             window.FlamingoApp.postMessage(message);
@@ -463,51 +478,14 @@ function sendToApp(data) {
 
 function getRank() {
     callFlamingoApp('game_rank').then(function(res) {
-        console.log("🏆 استجابة الترتيب:", res);
-        if (res.code == 200 && res.data) {
-            var innerHTML = "";
-            var topHTML = "";
-            
-            for (var i = 0; i < res.data.length; i++) {
-                var item = res.data[i];
-                if (i < 3) {
-                    topHTML +=
-                        '<div class="personItem"><div class="logoArea"><div class="logo"><img src="' +
-                        item.avatar +
-                        '" alt=""></div> <img class="no' +
-                        (i + 1) +
-                        '" src="images/no' +
-                        (i + 1) +
-                        '.png" alt=""></div><div class="nick">' +
-                        item.nick +
-                        '</div><div class="flex ac jc"><img src="images/gold.png" alt=""><div>' +
-                        item.total +
-                        "</div></div></div>";
-                } else {
-                    innerHTML +=
-                        '<div class="rank-list-item flex ac js"><div class="inner-item">' +
-                        (i + 1) +
-                        '</div><div class="inner-item"><div class="logo"><img src="' +
-                        item.avatar +
-                        '" alt=""></div></div><div class="inner-item">' +
-                        item.nick +
-                        '</div><div class="inner-item"><img src="images/gold.png" alt=""><div>' +
-                        item.total +
-                        "</div></div></div>";
-                }
-            }
-            $(".topThree").html(topHTML);
-            $(".topList").html(innerHTML);
-            
-            console.log("✅ تم تحديث الترتيب");
-        }
+        console.log("🏆 استجابة الترتيب:", res.code);
     }).catch(function(error) {
-        console.error("❌ خطأ في الحصول على الترتيب:", error);
+        console.error("❌ خطأ الترتيب:", error);
     });
 }
 
-function getInfo(_round, isChoice) {
-    console.log("🔄 الحصول على معلومات الجولة..., round:", _round, "isChoice:", isChoice);
+function getInfo(_round, isChoice, afterRoll) {
+    console.log("🔄 الحصول على معلومات، round:", _round, "afterRoll:", afterRoll);
     
     var params = {};
     if (_round) {
@@ -515,97 +493,76 @@ function getInfo(_round, isChoice) {
     }
     
     callFlamingoApp('game_info', params).then(function(res) {
-        console.log("📊 استجابة معلومات الجولة:", res);
+        console.log("📊 استجابة المعلومات:", res.code);
         
         if (res.code === 200 && res.data) {
-            // ✅ التحقق من وجود خطأ في العد التنازلي
-            if (res.data.countdown && res.data.countdown < 0) {
-                showSuccess(info.lang == "ar" ? "خطأ في النظام، جاري إعادة الاتصال..." : "System Error, reconnecting...");
-                
-                // ✅ إيقاف جميع المؤقتات
-                if (countTimer) clearInterval(countTimer);
-                if (handTimer) clearInterval(handTimer);
-                if (rollTimer) clearInterval(rollTimer);
-                if (resultTimer) clearInterval(resultTimer);
-                
-                // ✅ إعادة التعيين
-                status = 0;
-                console.log("🔄 إعادة التعيين بسبب خطأ");
-                
-                setTimeout(function() {
-                    getInfo();
-                    showHand();
-                }, 800);
-                return;
-            }
-
-            // ✅ تحديث واجهة المستخدم
+            // ✅ تحديث المعلومات الأساسية
             $(".balanceCount")[0].innerHTML = parseFloat(res.data.gold).toFixed(2);
             $(".profitCount")[0].innerHTML = res.data.profit || 0;
             $(".round")[0].innerHTML = (info.lang == "ar" ? "جولة " : "Round ") + res.data.round;
 
             // ✅ تحديث رقم الجولة
-            if (status == 1 && isChoice) return;
             round = res.data.round;
-
+            
+            // ✅ إذا كان هذا بعد السحب مباشرة
+            if (afterRoll) {
+                console.log("🔄 تحديث بعد السحب");
+                status = 0; // تأكيد أن status = 0
+                countTime = res.data.countdown || 10;
+                console.log("🔓 status = 0 بعد التحديث");
+            }
+            
+            // ✅ إذا لم يكن اختياراً عادياً
             if (!isChoice) {
-                countTime = res.data.countdown;
+                countTime = res.data.countdown || 10;
                 $(".coutDown")[0].innerHTML = countTime + "s";
                 
-                // ✅ إيقاف المؤقت القديم
-                if (countTimer) clearInterval(countTimer);
+                // ✅ إيقاف المؤقت السابق
+                if (countTimer) {
+                    clearInterval(countTimer);
+                }
                 
-                // ✅ التأكد من أن status = 0 قبل بدء العد التنازلي للرهان
+                // ✅ إذا كان وقت الرهان إيجابياً، بدء العد التنازلي
                 if (countTime > 0) {
+                    // ✅ التأكد من أن status = 0
                     status = 0;
-                    console.log("🎯 بدء مرحلة الرهان - status = 0 (يمكن النقر)");
-                    console.log("⏱️ وقت الرهان:", countTime, "ثانية");
+                    console.log("🎯 بدء مرحلة الرهان - status = 0");
                     
-                    // ✅ إظهار رسالة ترحيبية
-                    if (countTime > 5) {
-                        showSuccess(info.lang == "ar" ? "اختر فاكهتك واربح!" : "Choose your fruit and win!");
-                    }
-                    
-                    // ✅ بدء العد التنازلي للرهان
+                    // ✅ بدء العد التنازلي
                     countDown();
+                } else {
+                    console.log("⏰ لا وقت للرهان، الانتقال للسحب");
+                    status = 1;
+                    roll();
                 }
             }
 
-            // ✅ إظهار عناصر الواجهة المناسبة
-            $(".title2").hide();
-            $(".title1").show();
-
-            // ✅ عرض نتيجة الجولة السابقة
+            // ✅ عرض النتيجة السابقة إن وجدت
             if (res.data.result && res.data.result != "") {
                 $(".item" + searchGift(res.data.result)).addClass("active");
-                $(".noPrize1>div img:last-child").attr(
-                    "src",
-                    "images/gift_" + searchGift(res.data.result) + ".png"
-                );
             }
             
-            console.log("✅ تم تحديث معلومات الجولة");
+            console.log("✅ تم التحديث، status:", status, "countTime:", countTime);
         } else {
-            console.log("⚠️ استجابة غير متوقعة:", res);
+            console.log("⚠️ استجابة غير متوقعة");
         }
     }).catch(function(error) {
         console.error("❌ خطأ في getInfo:", error);
         // ✅ في حالة الخطأ، التأكد من إمكانية النقر
         status = 0;
-        console.log("🔓 status = 0 (بسبب خطأ)");
     });
 }
 
 function getBill() {
     callFlamingoApp('game_bill').then(function(res) {
-        console.log("📋 استجابة السجل:", res);
+        console.log("📋 استجابة السجل");
     }).catch(function(error) {
-        console.error("❌ خطأ في الحصول على السجل:", error);
+        console.error("❌ خطأ السجل:", error);
     });
 }
 
 function showSuccess(str) {
-    console.log("💬 عرض رسالة:", str);
+    console.log("💬 رسالة:", str);
     $(".pop-success div")[0].innerHTML = str;
     $(".pop-success").show();
     setTimeout(function() {
@@ -623,47 +580,24 @@ function changeLang(lang) {
     }
 }
 
-// ✅ دالة مساعدة للتحقق من حالة النظام
-function checkGameStatus() {
-    console.log("=== 📋 تقرير حالة النظام ===");
-    console.log("🎮 حالة اللعبة:", status === 0 ? "🟢 جاهز للرهان" : "🔴 جاري السحب");
-    console.log("🔢 رقم الجولة:", round);
-    console.log("⏱️ الوقت المتبقي:", countTime, "ثانية");
-    console.log("💰 المبلغ المختار:", currentGold);
-    console.log("🎯 عدد الرهانات:", selectCount);
-    console.log("📋 الفواكه المختارة:", selectArr);
-    console.log("========================");
+// ✅ أداة تصحيح للتحقق من حالة النظام
+function debugStatus() {
+    console.log("=== 🔍 تصحيح حالة النظام ===");
+    console.log("status:", status, "(", status === 0 ? "جاهز للرهان" : "جاري السحب", ")");
+    console.log("countTime:", countTime, "ثانية");
+    console.log("round:", round);
+    console.log("selectCount:", selectCount);
+    console.log("selectArr:", selectArr);
+    console.log("currentGold:", currentGold);
+    console.log("==========================");
 }
 
-// ✅ استدعاء دالة التحقق دورياً (للمساعدة في التصحيح)
+// ✅ مؤقت للتحقق الدوري
 setInterval(function() {
-    if (countTime <= 3 && status === 0) {
-        console.log("⏰ وقت الرهان ينفذ! فقط", countTime, "ثانية متبقية");
+    if (countTime > 0 && status !== 0) {
+        console.warn("⚠️ تحذير: countTime > 0 ولكن status ≠ 0");
+        debugStatus();
     }
-}, 1000);
+}, 2000);
 
-// ✅ إضافة أداة تصحيح للواجهة (اختياري)
-if (!window.gameDebug) {
-    window.gameDebug = {
-        checkStatus: checkGameStatus,
-        getGameState: function() {
-            return {
-                status: status,
-                round: round,
-                countTime: countTime,
-                currentGold: currentGold,
-                selectCount: selectCount,
-                selectArr: selectArr
-            };
-        },
-        forceBetMode: function() {
-            status = 0;
-            console.log("🔓 تم إجبار وضع الرهان - status = 0");
-            showSuccess("وضع الرهان مفعل");
-        }
-    };
-    
-    console.log("🐛 أدوات التصحيح متاحة عبر window.gameDebug");
-}
-
-console.log("🎉 تم تحميل لعبة عجلة الفواكه بنجاح!");
+console.log("🎉 تم تحميل اللعبة بنجاح! استخدم debugStatus() للتحقق من الحالة.");
