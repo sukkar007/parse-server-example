@@ -268,6 +268,7 @@ function roll(dir) {
         countTime--;
         if (countTime <= 0) {
             countTime = 0;
+            status = 2; // تم السحب/عرض النتيجة
             clearInterval(countTimer);
             clearInterval(rollTimer);
             for (var i = 0; i < $(".item .gray").length; i++) {
