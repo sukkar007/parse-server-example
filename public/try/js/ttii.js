@@ -268,7 +268,6 @@ function roll(dir) {
         countTime--;
         if (countTime <= 0) {
             countTime = 0;
-            status = 0;
             clearInterval(countTimer);
             clearInterval(rollTimer);
             for (var i = 0; i < $(".item .gray").length; i++) {
@@ -471,6 +470,7 @@ function getInfo(_round, isChoice) {
                 countTime = res.data.countdown;
                 $(".coutDown")[0].innerHTML = countTime + "s";
                 
+                status = 0; // تعيين الحالة إلى "يمكن النقر"
                 if (countTimer) clearInterval(countTimer);
                 countDown();
             }
