@@ -304,12 +304,15 @@ function roll(dir) {
 var hideLock = false;
 
 function bindEvent() {
-    $(".clickArea .clickItem").click(function() {
-        for (var i = 0; i < $(".clickItem").length; i++) {
-            $($(".clickItem").removeClass("active"));
-        }
+    // اختيار قيمة المراهنة — استخدم تفويض الحدث لتنظيف المنطق
+    $(".content").on("click", ".clickItem", function(e) {
+        // إزالة الصنف النشط عن جميع العناصر ثم تفعيل العنصر الحالي
+        $(".clickArea .clickItem").removeClass("active");
         $(this).addClass("active");
-        currentGold = goldList[$(this).data("index")];
+
+        var idx = $(this).data("index");
+        if (typeof idx === 'undefined' || isNaN(idx)) idx = 0;
+        currentGold = goldList[idx];
         console.log("Selected gold:", currentGold);
     });
     
@@ -330,17 +333,26 @@ function bindEvent() {
         console.error("Visibility change error:", e);
     }
 
-    // ربط أحداث النقر على الفواكه
-    for (var i = 0; i < 8; i++) {
-        (function(index) {
-            $(".item" + (index + 1)).click(function() {
-                if (status === 0) {
-                    var choice = choiceList[index];
-                    sureClick(choice, index);
-                }
-            });
-        })(i);
-    }
+    // ربط أحداث النقر على الفواكه — استخدم تفويض الحدث حتى لا تحجب العناصر الداخلية النقر
+    // ويتجاهل النقرات على عناصر التراكب مثل .selected و .gray
+    $(".content").on("click", ".item", function(e) {
+        if (status !== 0) return; // لا نسمح بالمراهنة أثناء السحب/العرض
+
+        // إذا كان النقر على عناصر تحكم أو تراكب داخل العنصر، تجاهله
+        if ($(e.target).closest('.clickArea, .selected, .gray, .reword, .rewordNo, .recordsBg, .ruleBg, .rankBg').length) {
+            return;
+        }
+
+        // استخرج رقم العنصر (item1..item8) واحسب الفهرس
+        var classes = $(this).attr('class').split(/\s+/);
+        var itemClass = classes.find(function(c) { return c.indexOf('item') === 0 && c.length > 4; });
+        if (!itemClass) return;
+        var indexNum = parseInt(itemClass.replace('item',''), 10) - 1;
+        if (isNaN(indexNum) || indexNum < 0 || indexNum > 7) return;
+
+        var choice = choiceList[indexNum];
+        sureClick(choice, indexNum);
+    });
 }
 
 /**
