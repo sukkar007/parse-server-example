@@ -10,7 +10,7 @@ export const config = {
   serverURL: process.env.SERVER_URL || 'http://localhost:1337/parse',
 
   liveQuery: {
-    classNames: ['Posts', 'Comments', 'Streaming', 'User', 'Installation'],
+    classNames: ['*'],
   },
 
   // 🔓 هذا هو المفتاح لتمكين إنشاء أي Class تلقائيًا
