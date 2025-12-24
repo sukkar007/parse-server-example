@@ -264,17 +264,16 @@ function roll(dir) {
     $(".title2").show();
     $(".coutDown")[0].innerHTML = countTime + "s";
     
-    countTimer = setInterval(function() {
+    var countTimer = setInterval(function() {
         countTime--;
         if (countTime <= 0) {
             countTime = 0;
             status = 0;
             clearInterval(countTimer);
             clearInterval(rollTimer);
-            
-            // **الإصلاح النهائي:** إخفاء الطبقة الرمادية فوراً بعد إيقاف المؤقت
-            $(".item .gray").hide(); 
-
+            for (var i = 0; i < $(".item .gray").length; i++) {
+                $($(".item .gray")[i]).hide();
+            }
             openDraw();
         }
         $(".coutDown")[0].innerHTML = countTime + "s";
@@ -305,12 +304,15 @@ function roll(dir) {
 var hideLock = false;
 
 function bindEvent() {
-    $(".clickArea .clickItem").click(function() {
-        for (var i = 0; i < $(".clickItem").length; i++) {
-            $($(".clickItem").removeClass("active"));
-        }
+    // اختيار قيمة المراهنة — استخدم تفويض الحدث لتنظيف المنطق
+    $(".content").on("click", ".clickItem", function(e) {
+        // إزالة الصنف النشط عن جميع العناصر ثم تفعيل العنصر الحالي
+        $(".clickArea .clickItem").removeClass("active");
         $(this).addClass("active");
-        currentGold = goldList[$(this).data("index")];
+
+        var idx = $(this).data("index");
+        if (typeof idx === 'undefined' || isNaN(idx)) idx = 0;
+        currentGold = goldList[idx];
         console.log("Selected gold:", currentGold);
     });
     
@@ -331,17 +333,112 @@ function bindEvent() {
         console.error("Visibility change error:", e);
     }
 
-    // ربط أحداث النقر على الفواكه
-    for (var i = 0; i < 8; i++) {
-        (function(index) {
-            $(".item" + (index + 1)).click(function() {
-                if (status === 0) {
-                    var choice = choiceList[index];
-                    sureClick(choice, index);
+    // ربط أحداث النقر على الفواكه — استخدم تفويض الحدث حتى لا تحجب العناصر الداخلية النقر
+    // ويتجاهل النقرات على عناصر التراكب مثل .selected و .gray
+    $(".content").on("click", ".item", function(e) {
+        if (status !== 0) return; // لا نسمح بالمراهنة أثناء السحب/العرض
+
+        // إذا كان النقر على عناصر تحكم أو تراكب داخل العنصر، تجاهله
+        if ($(e.target).closest('.clickArea, .reword, .rewordNo, .recordsBg, .ruleBg, .rankBg').length) {
+            return;
+        }
+
+        // استخرج رقم العنصر (item1..item8) واحسب الفهرس
+        var classes = $(this).attr('class').split(/\s+/);
+        var itemClass = classes.find(function(c) { return /^item\d+$/.test(c); });
+        if (!itemClass) return;
+        var indexNum = parseInt(itemClass.replace('item',''), 10) - 1;
+        if (isNaN(indexNum) || indexNum < 0 || indexNum > 7) return;
+
+        var choice = choiceList[indexNum];
+        sureClick(choice, indexNum);
+    });
+
+    // إضافة معالج Pointer لتجاوب أسرع على الأجهزة اللمسية — يستعمل نفس المنطق أعلاه
+    $(".content").on("pointerdown", ".item", function(e) {
+        if (status !== 0) return;
+        if ($(e.target).closest('.clickArea, .reword, .rewordNo, .recordsBg, .ruleBg, .rankBg').length) {
+            return;
+        }
+        var classes = $(this).attr('class').split(/\s+/);
+        var itemClass = classes.find(function(c) { return /^item\d+$/.test(c); });
+        if (!itemClass) return;
+        var indexNum = parseInt(itemClass.replace('item',''), 10) - 1;
+        if (isNaN(indexNum) || indexNum < 0 || indexNum > 7) return;
+        var choice = choiceList[indexNum];
+        // منع تكرار الحدث مع click
+        e.preventDefault();
+        sureClick(choice, indexNum);
+    });
+
+    // أداة تشخيص سريعة: سجّل العنصر تحت النقطة عند النقر إن لم يعمل النقر
+    $(document).on('click', function(e) {
+        // فقط عندما لا ينتمي الهدف لعناصر اللعبة
+        if ($(e.target).closest('.content, .item').length === 0) {
+            return;
+        }
+        // سجل العنصر الفعلي عند نقطه النقر
+        var el = document.elementFromPoint(e.clientX, e.clientY);
+        if (el) {
+            console.log('elementFromPoint at click:', el.tagName, el.className);
+        }
+    });
+
+    // تشخيص عام: سجل وميّز العنصر تحت المؤشر عند pointerdown
+    document.addEventListener('pointerdown', function(e) {
+        try {
+            var el = document.elementFromPoint(e.clientX, e.clientY);
+            if (el) {
+                console.log('DIAG pointerdown elementFromPoint:', el.tagName, el.className);
+
+                // أظهر مربع تشخيصي مرئي داخل التطبيق (لأنك لا تملك F12)
+                var diag = document.getElementById('diagBox');
+                if (!diag) {
+                    diag = document.createElement('div');
+                    diag.id = 'diagBox';
+                    diag.style.position = 'fixed';
+                    diag.style.zIndex = 2000;
+                    diag.style.background = 'rgba(0,0,0,0.65)';
+                    diag.style.color = '#fff';
+                    diag.style.fontSize = '12px';
+                    diag.style.padding = '6px 8px';
+                    diag.style.borderRadius = '6px';
+                    diag.style.pointerEvents = 'none';
+                    document.body.appendChild(diag);
                 }
-            });
-        })(i);
-    }
+
+                var style = window.getComputedStyle(el);
+                var zi = style.zIndex || 'auto';
+                var rect = el.getBoundingClientRect();
+
+                diag.innerText = el.tagName + ' ' + (el.className || '') + '\nzIndex: ' + zi + '\n' +
+                    'rect: ' + Math.round(rect.left) + ',' + Math.round(rect.top) + ',' + Math.round(rect.width) + 'x' + Math.round(rect.height);
+
+                // ضع المربع قرب النقطة إن أمكن
+                var left = e.clientX + 8;
+                var top = e.clientY + 8;
+                diag.style.left = (left) + 'px';
+                diag.style.top = (top) + 'px';
+
+                // إخفاء المربع بعد 2 ثانية
+                if (diag._hideT) clearTimeout(diag._hideT);
+                diag._hideT = setTimeout(function() { diag.style.display = 'none'; }, 2000);
+                diag.style.display = 'block';
+
+                // أرسل التشخيص للتطبيق إذا كان متاحا
+                try {
+                    sendToApp({ action: 'diag', tag: el.tagName, className: el.className, zIndex: zi, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } });
+                } catch (err) { console.warn('sendToApp diag failed', err); }
+
+                // ميّز العنصر مؤقتاً
+                var oldOutline = el.style.outline;
+                el.style.outline = '2px solid rgba(255,0,0,0.85)';
+                setTimeout(function() { el.style.outline = oldOutline; }, 800);
+            }
+        } catch (err) {
+            console.error('pointerdown diag error', err);
+        }
+    }, { passive: true });
 }
 
 /**
@@ -470,15 +567,6 @@ function getInfo(_round, isChoice) {
                 countTime = res.data.countdown;
                 $(".coutDown")[0].innerHTML = countTime + "s";
                 
-                // **الإصلاح النهائي:** تعيين status = 0 بشكل صريح وإخفاء الطبقات المانعة للنقر
-                status = 0; 
-                // إخفاء الطبقة الرمادية المانعة للنقر باستخدام محدد مباشر
-                $(".item .gray").hide(); 
-                
-                // إخفاء أي طبقات شفافة أخرى قد تمنع النقر (احتياطي)
-                $(".overlay").hide();
-                $(".lock").hide();
-                
                 if (countTimer) clearInterval(countTimer);
                 countDown();
             }
@@ -500,7 +588,7 @@ function getInfo(_round, isChoice) {
             var resultList = (res.data.resultList || []).reverse();
             for (var i = 0; i < resultList.length; i++) {
                 var _index = searchGift(resultList[i]);
-                if (_index) {
+                if (i == 0) {
                     giftListHtml +=
                         '<div class="giftItem"><img src="images/gift_' +
                         _index +
