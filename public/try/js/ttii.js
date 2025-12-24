@@ -47,20 +47,38 @@ window.onFlamingoPlayerInfo = function(playerInfo) {
 
 // استلام الاستجابات من التطبيق
 window.onFlamingoResponse = function(response) {
-    console.log("Received response from app:", response);
+    console.log("=== onFlamingoResponse Called ===");
+    console.log("Received response:", response);
+    console.log("Response type:", typeof response);
+    console.log("Pending requests:", Object.keys(pendingRequests));
     
-    if (!response) return;
+    if (!response) {
+        console.error("Response is empty/null");
+        return;
+    }
     
     var requestId = response.requestId;
+    console.log("Looking for requestId:", requestId);
+    console.log("Request exists:", !!pendingRequests[requestId]);
+    
     if (requestId && pendingRequests[requestId]) {
+        console.log("Found pending request! Resolving...");
         var callback = pendingRequests[requestId];
         delete pendingRequests[requestId];
         
+        console.log("Response success:", response.success);
+        console.log("Response code:", response.code);
+        console.log("Response data:", response.data);
+        
         if (response.success || response.code === 200) {
+            console.log("Calling resolve with data");
             callback.resolve(response.data || response);
         } else {
+            console.log("Calling reject");
             callback.reject(response.error || response.message || 'Unknown error');
         }
+    } else {
+        console.warn("No pending request found for requestId:", requestId);
     }
 };
 
@@ -215,18 +233,23 @@ function openDraw() {
 }
 
 function sureClick(choice, index) {
-    console.log("sureClick called with:", choice, index, "Gold:", currentGold);
+    console.log("=== sureClick START ===");
+    console.log("choice:", choice, "index:", index, "Gold:", currentGold);
     
     // التحقق من الرصيد
     let currentBalance = parseFloat($('.balanceCount').text());
     if (isNaN(currentBalance)) currentBalance = 0;
     
+    console.log("currentBalance:", currentBalance, "currentGold:", currentGold);
+    
     if (currentBalance < currentGold) {
+        console.log("Balance insufficient");
         showSuccess(info.lang == "ar" ? "رصيد غير كافٍ!" : "Insufficient balance!");
         return;
     }
 
     // التحقق من توفر التطبيق
+    console.log("FlamingoApp available:", !!window.FlamingoApp);
     if (!window.FlamingoApp) {
         console.error("FlamingoApp not available");
         showSuccess(info.lang == "ar" ? "خطأ: التطبيق غير متوفر" : "Error: App not available");
@@ -237,38 +260,63 @@ function sureClick(choice, index) {
     $('.balanceCount').text((currentBalance - currentGold).toFixed(2));
 
     // إرسال الطلب عبر التطبيق
+    console.log("Calling game_choice...");
     callFlamingoApp('game_choice', {
         choice: choice,
         gold: currentGold
     }).then(function(res) {
-        console.log("Choice response:", res);
-        if (res && res.code == 200) {
+        console.log("=== Choice Response Received ===");
+        console.log("Full response:", res);
+        
+        if (!res) {
+            console.error("Empty response");
+            showSuccess(info.lang == "ar" ? "فشل الاتصال" : "Connection failed");
+            $('.balanceCount').text(currentBalance.toFixed(2));
+            return;
+        }
+
+        console.log("Response code:", res.code, "Response data:", res.data);
+        
+        if (res && (res.code == 200 || res.success)) {
+            console.log("Success! Updating UI...");
             selectCount += 1;
             if (!selectArr.includes(choice)) {
                 selectArr.push(choice);
             }
 
             var list = [6, 7, 8, 1, 2, 3, 4, 5];
-            var temp = $(`.item${list[index]} .selected div:nth-child(2) div`)[0].innerHTML;
-            $(`.item${list[index]} .selected div:nth-child(2) div`)[0].innerHTML = 
-                parseInt(temp) + parseInt(currentGold);
-            $(`.item${list[index]} .selected`).show();
+            var itemSelector = `.item${list[index]} .selected div:nth-child(2) div`;
+            var $element = $(itemSelector);
+            
+            if ($element.length > 0) {
+                var temp = parseInt($element.html()) || 0;
+                var newAmount = temp + parseInt(currentGold);
+                $element.html(newAmount);
+                $(`.item${list[index]} .selected`).show();
+                console.log("Updated item amount:", newAmount);
+            } else {
+                console.error("Item element not found:", itemSelector);
+            }
 
             // تحديث الرصيد
             if (res.balance !== undefined) {
+                console.log("Updating balance to:", res.balance);
                 $('.balanceCount').text(parseFloat(res.balance).toFixed(2));
             }
             
-            showSuccess(info.lang == "ar" ? "تم وضع الرهان بنجاح" : "Bet placed successfully");
-        } else if (res.code == 10062) {
+            showSuccess(info.lang == "ar" ? "تم وضع الرهان بنجاح ✓" : "Bet placed successfully ✓");
+        } else if (res && res.code == 10062) {
+            console.log("Insufficient balance on server");
             showSuccess(info.lang == "ar" ? "يرجى الشحن" : "Please recharge");
             $('.balanceCount').text(currentBalance.toFixed(2));
         } else {
-            showSuccess(res.message || 'Error');
+            console.error("Error response:", res);
+            showSuccess((res && res.message) || (info.lang == "ar" ? "حدث خطأ" : "Error"));
             $('.balanceCount').text(currentBalance.toFixed(2));
         }
+        console.log("=== sureClick END ===");
     }).catch(function(error) {
-        console.error("Choice error:", error);
+        console.error("=== Choice Error ===", error);
         showSuccess(info.lang == "ar" ? "خطأ في وضع الرهان" : "Error placing bet");
         $('.balanceCount').text(currentBalance.toFixed(2));
     });
@@ -373,12 +421,19 @@ function callFlamingoApp(action, params) {
     return new Promise(function(resolve, reject) {
         var requestId = 'req_' + (++requestIdCounter) + '_' + Date.now();
         
+        console.log("=== callFlamingoApp START ===");
+        console.log("Action:", action);
+        console.log("RequestId:", requestId);
+        console.log("Params:", params);
+        
         // تخزين callback
         pendingRequests[requestId] = {
             resolve: resolve,
             reject: reject,
             timestamp: Date.now()
         };
+        
+        console.log("Pending requests count:", Object.keys(pendingRequests).length);
         
         // إرسال الطلب للتطبيق
         var message = JSON.stringify({
@@ -387,29 +442,35 @@ function callFlamingoApp(action, params) {
             params: params || {}
         });
         
-        console.log("Sending to app:", message);
+        console.log("Message to send:", message);
+        console.log("FlamingoApp:", window.FlamingoApp);
         
         if (window.FlamingoApp) {
             try {
+                console.log("Sending message to app...");
                 window.FlamingoApp.postMessage(message);
+                console.log("Message sent successfully");
             } catch (e) {
                 console.error("Error sending message to app:", e);
                 delete pendingRequests[requestId];
                 reject('Failed to send message to app: ' + e.message);
             }
         } else {
-            console.error("FlamingoApp not available");
+            console.error("FlamingoApp not available - window.FlamingoApp is undefined");
             delete pendingRequests[requestId];
             reject('FlamingoApp not available');
         }
         
         // Timeout بعد 30 ثانية
-        setTimeout(function() {
+        var timeoutId = setTimeout(function() {
             if (pendingRequests[requestId]) {
+                console.error("Request timeout for:", action, requestId);
                 delete pendingRequests[requestId];
-                reject('Request timeout');
+                reject('Request timeout for: ' + action);
             }
         }, 30000);
+        
+        console.log("=== callFlamingoApp END - Waiting for response ===");
     });
 }
 
