@@ -264,16 +264,18 @@ function roll(dir) {
     $(".title2").show();
     $(".coutDown")[0].innerHTML = countTime + "s";
     
-    var countTimer = setInterval(function() {
+    // **تم الإصلاح:** إزالة 'var' لاستخدام المتغير العام countTimer
+    countTimer = setInterval(function() {
         countTime--;
         if (countTime <= 0) {
             countTime = 0;
             status = 0;
             clearInterval(countTimer);
             clearInterval(rollTimer);
-            for (var i = 0; i < $(".item .gray").length; i++) {
-                $($(".item .gray")[i]).hide();
-            }
+            
+            // **تمت إزالة:** حلقة for التي كانت تخفي الطبقة الرمادية هنا
+            // لأنها ستتم إضافتها في getInfo() عند بدء الجولة الجديدة
+
             openDraw();
         }
         $(".coutDown")[0].innerHTML = countTime + "s";
@@ -304,15 +306,12 @@ function roll(dir) {
 var hideLock = false;
 
 function bindEvent() {
-    // اختيار قيمة المراهنة — استخدم تفويض الحدث لتنظيف المنطق
-    $(".content").on("click", ".clickItem", function(e) {
-        // إزالة الصنف النشط عن جميع العناصر ثم تفعيل العنصر الحالي
-        $(".clickArea .clickItem").removeClass("active");
+    $(".clickArea .clickItem").click(function() {
+        for (var i = 0; i < $(".clickItem").length; i++) {
+            $($(".clickItem").removeClass("active"));
+        }
         $(this).addClass("active");
-
-        var idx = $(this).data("index");
-        if (typeof idx === 'undefined' || isNaN(idx)) idx = 0;
-        currentGold = goldList[idx];
+        currentGold = goldList[$(this).data("index")];
         console.log("Selected gold:", currentGold);
     });
     
@@ -333,26 +332,17 @@ function bindEvent() {
         console.error("Visibility change error:", e);
     }
 
-    // ربط أحداث النقر على الفواكه — استخدم تفويض الحدث حتى لا تحجب العناصر الداخلية النقر
-    // ويتجاهل النقرات على عناصر التراكب مثل .selected و .gray
-    $(".content").on("click", ".item", function(e) {
-        if (status !== 0) return; // لا نسمح بالمراهنة أثناء السحب/العرض
-
-        // إذا كان النقر على عناصر تحكم أو تراكب داخل العنصر، تجاهله
-        if ($(e.target).closest('.clickArea, .selected, .gray, .reword, .rewordNo, .recordsBg, .ruleBg, .rankBg').length) {
-            return;
-        }
-
-        // استخرج رقم العنصر (item1..item8) واحسب الفهرس
-        var classes = $(this).attr('class').split(/\s+/);
-        var itemClass = classes.find(function(c) { return c.indexOf('item') === 0 && c.length > 4; });
-        if (!itemClass) return;
-        var indexNum = parseInt(itemClass.replace('item',''), 10) - 1;
-        if (isNaN(indexNum) || indexNum < 0 || indexNum > 7) return;
-
-        var choice = choiceList[indexNum];
-        sureClick(choice, indexNum);
-    });
+    // ربط أحداث النقر على الفواكه
+    for (var i = 0; i < 8; i++) {
+        (function(index) {
+            $(".item" + (index + 1)).click(function() {
+                if (status === 0) {
+                    var choice = choiceList[index];
+                    sureClick(choice, index);
+                }
+            });
+        })(i);
+    }
 }
 
 /**
@@ -481,6 +471,11 @@ function getInfo(_round, isChoice) {
                 countTime = res.data.countdown;
                 $(".coutDown")[0].innerHTML = countTime + "s";
                 
+                // **الإصلاح:** إخفاء الطبقة الرمادية للسماح بالنقر
+                for (var i = 0; i < $(".item .gray").length; i++) {
+                    $($(".item .gray")[i]).hide();
+                }
+                
                 if (countTimer) clearInterval(countTimer);
                 countDown();
             }
@@ -502,12 +497,7 @@ function getInfo(_round, isChoice) {
             var resultList = (res.data.resultList || []).reverse();
             for (var i = 0; i < resultList.length; i++) {
                 var _index = searchGift(resultList[i]);
-                if (i == 0) {
-                    giftListHtml +=
-                        '<div class="giftItem"><img src="images/gift_' +
-                        _index +
-                        '.png" alt=""><img src="images/new.png" alt=""></div>';
-                } else {
+                if (_index) {
                     giftListHtml +=
                         '<div class="giftItem"><img src="images/gift_' +
                         _index +
