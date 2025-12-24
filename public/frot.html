@@ -10,6 +10,24 @@
     <script src="https://parse-server-example-o1ht.onrender.com/public/try/lib/lib/rem.js"></script>
     <link rel="stylesheet" href="https://parse-server-example-o1ht.onrender.com/public/try//lib/lib/reset.css" />
     <link rel="stylesheet" href="https://parse-server-example-o1ht.onrender.com/public/try/css/index.css" />
+    <style>
+        /* إصلاح مشكلة النقر على الفواكه */
+        .item {
+            cursor: pointer !important;
+            z-index: 10 !important;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+        .innerContent,
+        .selected,
+        .gray,
+        .hand {
+            pointer-events: none !important;
+        }
+        .item > img {
+            pointer-events: none !important;
+        }
+    </style>
     <!-- <script async src="https://www.googletagmanager.com/gtag/js?id=G-6FCRRSYC0G"></script>
     <script>
         window.dataLayer = window.dataLayer || [];
