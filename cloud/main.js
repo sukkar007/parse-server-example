@@ -303,7 +303,7 @@ const FRUIT_MAP = {
 };
 
 //////////////////////////////////////////////////////////
-// جلب معلومات اللعبة والجولة الحالية - مصحح
+// جلب معلومات اللعبة والجولة الحالية
 //////////////////////////////////////////////////////////
 Parse.Cloud.define("game_info", async (request) => {
   const user = request.user;
@@ -434,10 +434,6 @@ Parse.Cloud.define("game_info", async (request) => {
     data: {
       countdown: countdown,
       round: currentRound,
-      roundStartTime: roundStartTime,
-      roundEndTime: roundEndTime,
-      serverTime: currentTime,
-      roundDuration: ROUND_DURATION,
       gold: userCredits,
       profit: userProfit,
       result: previousWinningFruit,
@@ -451,7 +447,7 @@ Parse.Cloud.define("game_info", async (request) => {
 });
 
 //////////////////////////////////////////////////////////
-// وضع رهان في اللعبة - مصحح
+// وضع رهان في اللعبة
 //////////////////////////////////////////////////////////
 Parse.Cloud.define("game_choice", async (request) => {
   const user = request.user;
@@ -517,7 +513,7 @@ Parse.Cloud.define("game_choice", async (request) => {
 });
 
 //////////////////////////////////////////////////////////
-// جلب سجل الرهانات - مصحح
+// جلب سجل الرهانات
 //////////////////////////////////////////////////////////
 Parse.Cloud.define("game_bill", async (request) => {
   const user = request.user;
@@ -561,7 +557,7 @@ Parse.Cloud.define("game_bill", async (request) => {
 });
 
 //////////////////////////////////////////////////////////
-// جلب ترتيب اللاعبين - مصحح
+// جلب ترتيب اللاعبين
 //////////////////////////////////////////////////////////
 Parse.Cloud.define("game_rank", async (request) => {
   const rankQuery = new Parse.Query(Parse.User);
@@ -585,7 +581,7 @@ Parse.Cloud.define("game_rank", async (request) => {
 });
 
 //////////////////////////////////////////////////////////
-// التحقق من صلاحية اللاعب للعبة - مصحح
+// التحقق من صلاحية اللاعب للعبة
 //////////////////////////////////////////////////////////
 Parse.Cloud.define("game_validate_player", async (request) => {
   const user = request.user;
