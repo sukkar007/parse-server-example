@@ -264,16 +264,14 @@ function roll(dir) {
     $(".title2").show();
     $(".coutDown")[0].innerHTML = countTime + "s";
     
-    var countTimer = setInterval(function() {
+    countTimer = setInterval(function() {
         countTime--;
         if (countTime <= 0) {
             countTime = 0;
             status = 0;
             clearInterval(countTimer);
             clearInterval(rollTimer);
-            for (var i = 0; i < $(".item .gray").length; i++) {
-                $($(".item .gray")[i]).hide();
-            }
+
             openDraw();
         }
         $(".coutDown")[0].innerHTML = countTime + "s";
@@ -304,15 +302,12 @@ function roll(dir) {
 var hideLock = false;
 
 function bindEvent() {
-    // اختيار قيمة المراهنة — استخدم تفويض الحدث لتنظيف المنطق
-    $(".content").on("click", ".clickItem", function(e) {
-        // إزالة الصنف النشط عن جميع العناصر ثم تفعيل العنصر الحالي
-        $(".clickArea .clickItem").removeClass("active");
+    $(".clickArea .clickItem").click(function() {
+        for (var i = 0; i < $(".clickItem").length; i++) {
+            $($(".clickItem").removeClass("active"));
+        }
         $(this).addClass("active");
-
-        var idx = $(this).data("index");
-        if (typeof idx === 'undefined' || isNaN(idx)) idx = 0;
-        currentGold = goldList[idx];
+        currentGold = goldList[$(this).data("index")];
         console.log("Selected gold:", currentGold);
     });
     
@@ -333,56 +328,17 @@ function bindEvent() {
         console.error("Visibility change error:", e);
     }
 
-    // ربط أحداث النقر على الفواكه — استخدم تفويض الحدث حتى لا تحجب العناصر الداخلية النقر
-    // ويتجاهل النقرات على عناصر التراكب مثل .selected و .gray
-    $(".content").on("click", ".item", function(e) {
-        if (status !== 0) return; // لا نسمح بالمراهنة أثناء السحب/العرض
-
-        // إذا كان النقر على عناصر تحكم أو تراكب داخل العنصر، تجاهله
-        if ($(e.target).closest('.clickArea, .reword, .rewordNo, .recordsBg, .ruleBg, .rankBg').length) {
-            return;
-        }
-
-        // استخرج رقم العنصر (item1..item8) واحسب الفهرس
-        var classes = $(this).attr('class').split(/\s+/);
-        var itemClass = classes.find(function(c) { return /^item\d+$/.test(c); });
-        if (!itemClass) return;
-        var indexNum = parseInt(itemClass.replace('item',''), 10) - 1;
-        if (isNaN(indexNum) || indexNum < 0 || indexNum > 7) return;
-
-        var choice = choiceList[indexNum];
-        sureClick(choice, indexNum);
-    });
-
-    // إضافة معالج Pointer لتجاوب أسرع على الأجهزة اللمسية — يستعمل نفس المنطق أعلاه
-    $(".content").on("pointerdown", ".item", function(e) {
-        if (status !== 0) return;
-        if ($(e.target).closest('.clickArea, .reword, .rewordNo, .recordsBg, .ruleBg, .rankBg').length) {
-            return;
-        }
-        var classes = $(this).attr('class').split(/\s+/);
-        var itemClass = classes.find(function(c) { return /^item\d+$/.test(c); });
-        if (!itemClass) return;
-        var indexNum = parseInt(itemClass.replace('item',''), 10) - 1;
-        if (isNaN(indexNum) || indexNum < 0 || indexNum > 7) return;
-        var choice = choiceList[indexNum];
-        // منع تكرار الحدث مع click
-        e.preventDefault();
-        sureClick(choice, indexNum);
-    });
-
-    // أداة تشخيص سريعة: سجّل العنصر تحت النقطة عند النقر إن لم يعمل النقر
-    $(document).on('click', function(e) {
-        // فقط عندما لا ينتمي الهدف لعناصر اللعبة
-        if ($(e.target).closest('.content, .item').length === 0) {
-            return;
-        }
-        // سجل العنصر الفعلي عند نقطه النقر
-        var el = document.elementFromPoint(e.clientX, e.clientY);
-        if (el) {
-            console.log('elementFromPoint at click:', el.tagName, el.className);
-        }
-    });
+    // ربط أحداث النقر على الفواكه
+    for (var i = 0; i < 8; i++) {
+        (function(index) {
+            $(".item" + (index + 1)).click(function() {
+                if (status === 0) {
+                    var choice = choiceList[index];
+                    sureClick(choice, index);
+                }
+            });
+        })(i);
+    }
 }
 
 /**
@@ -511,6 +467,15 @@ function getInfo(_round, isChoice) {
                 countTime = res.data.countdown;
                 $(".coutDown")[0].innerHTML = countTime + "s";
                 
+                // **الإصلاح النهائي:** تعيين status = 0 بشكل صريح وإخفاء الطبقات المانعة للنقر
+                status = 0; 
+                // إخفاء الطبقة الرمادية المانعة للنقر باستخدام محدد مباشر
+                $(".item .gray").hide(); 
+                
+                // إخفاء أي طبقات شفافة أخرى قد تمنع النقر (احتياطي)
+                $(".overlay").hide();
+                $(".lock").hide();
+                
                 if (countTimer) clearInterval(countTimer);
                 countDown();
             }
@@ -532,7 +497,7 @@ function getInfo(_round, isChoice) {
             var resultList = (res.data.resultList || []).reverse();
             for (var i = 0; i < resultList.length; i++) {
                 var _index = searchGift(resultList[i]);
-                if (i == 0) {
+                if (_index) {
                     giftListHtml +=
                         '<div class="giftItem"><img src="images/gift_' +
                         _index +
