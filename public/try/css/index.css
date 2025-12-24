@@ -54,21 +54,21 @@
     justify-content: center;
 }
 
-.content {
+.close {
+    width: 0.68rem;
+    height: 0.68rem;
+    right: 0.14rem;
+    top: 0.88rem;
+    display: block;
+    position: absolute;
+}
+
+.bg {
     width: 6.86rem;
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    top: 1.4rem;
-    height: 10.88rem;
-    z-index: 1001; /* رفع محتوى اللعبة فوق الخلفيات */
-}
-.item {
-    position: absolute;
-    width: 1.52rem;
-    height: 1.52rem;
-    z-index: 1002; /* تأكد أن العناصر قابلة للنقر فوق عناصر أخرى */
-}
+    height: auto;
+    display: block;
+    margin: 0 auto;
+    position: relative;
     top: 1.4rem;
 }
 
@@ -80,10 +80,6 @@
 }
 
 .btn img {
-/* ضع الخلفية تحت عناصر اللعبة */
-.bg {
-    z-index: 0;
-}
     width: 100%;
     height: auto;
     display: block;
@@ -159,14 +155,12 @@
     transform: translateX(-50%);
     top: 1.4rem;
     height: 10.88rem;
-    z-index: 20; /* رفع محتوى اللعبة فوق الخلفيات */
 }
 
 .item {
     position: absolute;
     width: 1.52rem;
     height: 1.52rem;
-    z-index: 21; /* تأكد أن العناصر قابلة للنقر فوق عناصر أخرى */
 }
 
 .item>img {
@@ -1424,28 +1418,4 @@
     left: 50%;
     bottom: 0.28rem;
     transform: translateX(-50%);
-}
-
-/* Ensure overlay elements don't block clicks on the underlying item itself */
-.item .gray {
-    pointer-events: none;
-}
-
-/* If .selected is shown but we still want underlying item clicks, allow pointer-events pass-through */
-.item .selected {
-    pointer-events: none;
-}
-
-/* مربع تشخيصي مرئي داخل التطبيق عندما لا يتوفر F12 */
-#diagBox {
-    position: fixed;
-    padding: 6px 8px;
-    background: rgba(0,0,0,0.65);
-    color: #fff;
-    font-size: 12px;
-    border-radius: 6px;
-    z-index: 2000;
-    pointer-events: none;
-    white-space: pre-line;
-}
 }
