@@ -1,5 +1,5 @@
 /**
- * لعبة عجلة الفواكه
+ * لعبة عجلة الفواكه - الإصدار المصحح
  */
 
 var count = 4;
@@ -32,16 +32,14 @@ var info = window.flamingoPlayerInfo || {
 var pendingRequests = {};
 var requestIdCounter = 0;
 
-console.log("Game loaded, player info:", info);
+console.log("Game loaded");
 
-// استقبال معلومات اللاعب
 window.onFlamingoPlayerInfo = function(playerInfo) {
-    console.log("Player info received:", playerInfo);
+    console.log("Player info received");
     info = playerInfo;
     init();
 };
 
-// استقبال الردود من التطبيق
 window.onFlamingoResponse = function(response) {
     console.log("Response from app:", response);
     
@@ -77,15 +75,11 @@ $(document).ready(function() {
 function init() {
     console.log("Initializing game...");
     
-    // إعداد اللغة
     if (info.lang) {
         changeLang(info.lang);
     }
     
-    // تهيئة الأحداث أولاً
     setupEvents();
-    
-    // ثم تحميل البيانات
     showHand();
     getInfo();
     getBill();
@@ -93,13 +87,13 @@ function init() {
 }
 
 function setupEvents() {
-    console.log("Setting up events...");
+    console.log("Setting up click events...");
     
-    // تنظيف الأحداث القديمة
+    // إزالة الأحداث القديمة
     $(".item").off('click');
     $(".clickItem").off('click');
     
-    // خريطة الترجمة من data-index إلى choice
+    // خريطة data-index إلى choice
     var indexToChoice = {
         0: "g", // item6
         1: "h", // item7  
@@ -111,41 +105,39 @@ function setupEvents() {
         7: "f"  // item5
     };
     
-    // ربط أحداث النقر على الفواكه
+    // ربط النقر على الفواكه
     $(".item").each(function() {
         var $item = $(this);
         var dataIndex = $item.data("index");
         
         if (dataIndex === undefined) return;
         
-        $item.css('cursor', 'pointer');
-        
         $item.on('click', function() {
-            console.log("Item clicked, data-index:", dataIndex, "status:", status);
+            console.log("Item clicked, index:", dataIndex);
             
             if (status !== 0) {
-                console.log("Can't bet now, status is:", status);
+                console.log("Can't bet now");
                 return;
             }
             
             var choice = indexToChoice[dataIndex];
             if (!choice) {
-                console.error("No choice for index:", dataIndex);
+                console.error("Invalid choice for index:", dataIndex);
                 return;
             }
             
             var choiceIndex = choiceList.indexOf(choice);
             if (choiceIndex === -1) {
-                console.error("Choice not in list:", choice);
+                console.error("Choice not found:", choice);
                 return;
             }
             
-            console.log("Placing bet on:", choice, "with gold:", currentGold);
+            console.log("Placing bet:", choice, "amount:", currentGold);
             placeBet(choice, choiceIndex);
         });
     });
     
-    // ربط أحداث النقر على مبالغ الذهب
+    // ربط النقر على مبالغ الذهب
     $(".clickItem").each(function() {
         var $item = $(this);
         var index = $item.data("index");
@@ -154,7 +146,7 @@ function setupEvents() {
             $(".clickItem").removeClass("active");
             $item.addClass("active");
             currentGold = goldList[index];
-            console.log("Selected gold amount:", currentGold);
+            console.log("Gold selected:", currentGold);
         });
     });
     
@@ -181,21 +173,20 @@ function setupEvents() {
 
 function placeBet(choice, choiceIndex) {
     console.log("=== Placing Bet ===");
-    console.log("Choice:", choice, "Index:", choiceIndex, "Amount:", currentGold);
+    console.log("Choice:", choice, "Amount:", currentGold);
     
-    // التحقق من الرصيد
     var balanceElem = $('.balanceCount');
     var currentBalance = parseFloat(balanceElem.text()) || 0;
     
     console.log("Current balance:", currentBalance);
     
     if (currentBalance < currentGold) {
-        showMessage(info.lang == "ar" ? "رصيد غير كافٍ" : "Insufficient balance");
+        showMessage("Insufficient balance");
         return;
     }
     
     if (selectCount >= 6) {
-        showMessage(info.lang == "ar" ? "وصلت للحد الأقصى" : "Maximum bets reached");
+        showMessage("Maximum bets reached");
         return;
     }
     
@@ -221,24 +212,21 @@ function placeBet(choice, choiceIndex) {
                 balanceElem.text(parseFloat(response.balance).toFixed(2));
             }
             
-            // إشعار التطبيق
             sendToApp({ action: 'refreshBalance' });
             
         } else {
             // خطأ
             showMessage(response.message || "Error");
-            // إعادة الرصيد
             balanceElem.text(currentBalance.toFixed(2));
         }
     }).catch(function(error) {
         console.error("Bet error:", error);
-        showMessage(info.lang == "ar" ? "خطأ في النظام" : "System error");
+        showMessage("System error");
         balanceElem.text(currentBalance.toFixed(2));
     });
 }
 
 function updateBetDisplay(choiceIndex, gold) {
-    // خريطة من choice index إلى item number
     var indexToItem = [6, 7, 8, 1, 2, 3, 4, 5];
     var itemNumber = indexToItem[choiceIndex];
     
@@ -250,7 +238,7 @@ function updateBetDisplay(choiceIndex, gold) {
         var newAmount = currentAmount + gold;
         amountDiv.text(newAmount);
         selectedDiv.show();
-        console.log("Updated item", itemNumber, "to amount:", newAmount);
+        console.log("Item", itemNumber, "updated to:", newAmount);
     }
 }
 
@@ -274,7 +262,7 @@ function callGameAPI(action, params) {
         if (window.FlamingoApp) {
             window.FlamingoApp.postMessage(JSON.stringify(message));
         } else {
-            reject('App channel not available');
+            reject('App not available');
         }
         
         setTimeout(function() {
@@ -320,12 +308,10 @@ function getInfo(_round) {
 }
 
 function updateGameUI(data) {
-    // تحديث الرصيد
     $('.balanceCount').text(parseFloat(data.gold || 0).toFixed(2));
     $('.profitCount').text(data.profit || 0);
     $('.round').text((info.lang == "ar" ? "جولة " : "Round ") + (data.round || 0));
     
-    // تحديث الوقت
     if (data.countdown !== undefined) {
         countTime = data.countdown;
         $(".coutDown").text(countTime + "s");
@@ -335,12 +321,10 @@ function updateGameUI(data) {
         }
     }
     
-    // تحديث النتائج السابقة
     if (data.resultList) {
         updateResultList(data.resultList);
     }
     
-    // تحديث الرهانات الحالية
     if (data.select) {
         updateCurrentBets(data.select);
     }
@@ -367,7 +351,6 @@ function startRolling() {
     $(".title1").hide();
     $(".title2").show();
     
-    // إظهار جميع العناصر الرمادية
     $(".item .gray").show();
     
     rollTimer = setInterval(function() {
@@ -413,11 +396,9 @@ function updateResultList(results) {
 }
 
 function updateCurrentBets(bets) {
-    // إخفاء جميع الرهانات أولاً
     $(".item .selected").hide();
     $(".item .selected div:nth-child(2) div").text("0");
     
-    // إظهار الرهانات الحالية
     for (var choice in bets) {
         if (bets.hasOwnProperty(choice)) {
             var index = searchGift(choice);
@@ -448,7 +429,9 @@ function showMessage(msg) {
 
 function changeLang(lang) {
     if (!['en', 'ar'].includes(lang)) lang = 'en';
-    
-    // هنا يمكنك إضافة منطق تغيير اللغة إذا كان موجوداً
-    console.log("Language set to:", lang);
+    console.log("Language:", lang);
+}
+
+function hideHand() {
+    $(".hand").hide();
 }
