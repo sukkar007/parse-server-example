@@ -271,6 +271,9 @@ function roll(dir) {
             status = 0;
             clearInterval(countTimer);
             clearInterval(rollTimer);
+            
+            // **الإصلاح النهائي:** إخفاء الطبقة الرمادية فوراً بعد إيقاف المؤقت
+            $(".item .gray").hide(); 
 
             openDraw();
         }
