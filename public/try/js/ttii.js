@@ -107,11 +107,22 @@ window.onFlamingoResponse = function(response) {
     console.log("Response type:", typeof response);
     console.log("Pending requests:", Object.keys(pendingRequests));
     
+    // إذا أرسل التطبيق سلسلة JSON كنص، حاول تحويلها لكائن
+    if (typeof response === 'string') {
+        try {
+            response = JSON.parse(response);
+            addDebugLog('Parsed response string to object: ' + (response.requestId || 'no-id'));
+        } catch (e) {
+            console.warn('onFlamingoResponse: response is string but JSON.parse failed', e);
+            addDebugLog('Received non-JSON string response');
+        }
+    }
+
     if (!response) {
         console.error("Response is empty/null");
         return;
     }
-    
+
     var requestId = response.requestId;
     console.log("Looking for requestId:", requestId);
     console.log("Request exists:", !!pendingRequests[requestId]);
