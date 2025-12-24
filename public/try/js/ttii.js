@@ -36,24 +36,27 @@ var info = window.flamingoPlayerInfo || {
 var pendingRequests = {};
 var requestIdCounter = 0;
 
+console.log("=== GAME INITIALIZED ===");
 console.log("Player Info:", info);
 
 // استلام معلومات اللاعب من التطبيق
 window.onFlamingoPlayerInfo = function(playerInfo) {
     info = playerInfo;
-    console.log("Received player info:", info);
+    console.log("=== Received player info ===");
+    console.log("Info:", info);
     init();
 };
 
 // استلام الاستجابات من التطبيق
 window.onFlamingoResponse = function(response) {
     console.log("=== onFlamingoResponse Called ===");
-    console.log("Received response from app:", response);
+    console.log("Received response:", response);
     
     // إذا أرسل التطبيق سلسلة JSON كنص، حاول تحويلها لكائن
     if (typeof response === 'string') {
         try {
             response = JSON.parse(response);
+            console.log("Parsed string response to object");
         } catch (e) {
             console.warn('onFlamingoResponse: response is string but JSON.parse failed', e);
         }
@@ -61,6 +64,7 @@ window.onFlamingoResponse = function(response) {
     
     var requestId = response.requestId;
     console.log("Looking for requestId:", requestId);
+    console.log("Pending requests:", Object.keys(pendingRequests));
     
     if (requestId && pendingRequests[requestId]) {
         console.log("Found pending request! Resolving...");
@@ -68,8 +72,10 @@ window.onFlamingoResponse = function(response) {
         delete pendingRequests[requestId];
         
         if (response.success || response.code === 200) {
+            console.log("Calling resolve with data");
             callback.resolve(response.data || response);
         } else {
+            console.log("Calling reject with error");
             callback.reject(response.error || response.message || 'Unknown error');
         }
     } else {
@@ -92,46 +98,84 @@ var env = (function() {
 })();
 
 $(document).ready(function() {
-    console.log("Document ready");
+    console.log("=== Document ready ===");
     
     // انتظار معلومات اللاعب من التطبيق
     if (window.flamingoPlayerInfo) {
         info = window.flamingoPlayerInfo;
+        console.log("Got player info from window");
         init();
     } else {
+        console.log("No player info yet, waiting...");
         // انتظار قصير ثم المحاولة
         setTimeout(function() {
             if (window.flamingoPlayerInfo) {
                 info = window.flamingoPlayerInfo;
+                console.log("Got player info after delay");
+            } else {
+                console.log("Still no player info, using defaults");
             }
             init();
         }, 500);
     }
 });
 
+// دالة لاختبار العناصر في الصفحة
+function testElements() {
+    console.log("=== Testing Elements ===");
+    console.log("Total .item elements:", $(".item").length);
+    
+    for (var i = 0; i < 8; i++) {
+        var selector = ".item" + (i + 1);
+        var $element = $(selector);
+        var dataIndex = $element.data("index");
+        console.log(selector + ": exists=" + ($element.length > 0) + ", data-index=" + dataIndex);
+        
+        if ($element.length > 0) {
+            // اختبار أن العنصر يمكن النقر عليه
+            $element.css("cursor", "pointer");
+        }
+    }
+    
+    console.log("Total .clickItem elements:", $(".clickItem").length);
+    $(".clickItem").each(function(i) {
+        console.log("clickItem " + i + ": data-index=" + $(this).data("index") + ", gold=" + goldList[$(this).data("index")]);
+    });
+    
+    console.log("Choice list:", choiceList);
+    console.log("Current gold:", currentGold);
+    console.log("Current status:", status);
+}
+
 function init() {
-    console.log("Initializing game...");
+    console.log("=== Initializing game ===");
+    
+    // اختبار العناصر أولاً
+    testElements();
+    
     moment.tz.setDefault("Asia/Riyadh");
     changeLang(info.lang || 'en');
     showHand();
     bindEvent();
-    getInfo();
-    getBill();
-    getRank();
     
-    // تحميل i18n
-    if (typeof $ !== 'undefined' && $.fn.i18n) {
-        $("[i18n]").i18n({
-            defaultLang: info.lang || 'en',
-            filePath: "js/i18n/",
-            filePrefix: "i18n_",
-            fileSuffix: "",
-            forever: true,
-            callback: function() {
-                console.log("Language loaded");
-            },
-        });
+    // تأكد من أن currentGold مُهيأ
+    if (!currentGold || currentGold <= 0) {
+        currentGold = goldList[0];
+        $(".clickItem").first().addClass("active");
+        console.log("Initialized currentGold to:", currentGold);
     }
+    
+    // تحميل البيانات
+    setTimeout(function() {
+        getInfo();
+        getBill();
+        getRank();
+    }, 1000);
+    
+    // عرض رسالة ترحيب
+    setTimeout(function() {
+        showSuccess(info.lang == "ar" ? "مرحباً! اختر الفاكهة للرهان" : "Welcome! Select fruit to bet");
+    }, 1500);
 }
 
 function showHand() {
@@ -240,13 +284,17 @@ function sureClick(choice, index) {
     
     // التحقق من الرصيد
     let currentBalance = parseFloat($('.balanceCount').text());
-    console.log("Current balance:", currentBalance);
+    console.log("Current balance from UI:", currentBalance);
     
     if (isNaN(currentBalance)) {
+        console.warn("Invalid balance, setting to 0");
         currentBalance = 0;
     }
     
+    console.log("Balance check:", currentBalance, ">=", currentGold, "?", currentBalance >= currentGold);
+    
     if (currentBalance < currentGold) {
+        console.log("❌ Balance insufficient");
         showSuccess(info.lang == "ar" ? "رصيد غير كافٍ!" : "Insufficient balance!");
         return;
     }
@@ -255,38 +303,61 @@ function sureClick(choice, index) {
     $('.balanceCount').text((currentBalance - currentGold).toFixed(2));
 
     // إرسال الطلب عبر التطبيق (آمن)
+    console.log("📤 Sending bet request:", { choice: choice, gold: currentGold });
+    
     callFlamingoApp('game_choice', {
         choice: choice,
         gold: currentGold
     }).then(function(res) {
-        console.log("Choice response:", res);
+        console.log("✅ Choice response received:", res);
+        
         if (res.code == 200 || res.success) {
             selectCount += 1;
             if (!selectArr.includes(choice)) {
                 selectArr.push(choice);
             }
 
-            // الحصول على رقم العنصر الصحيح من data-index
-            var itemElement = $('.item[data-index="' + index + '"]');
-            if (itemElement.length === 0) {
-                // محاولة أخرى
-                var itemNumber = getItemNumberFromIndex(index);
-                itemElement = $('.item' + itemNumber);
-            }
+            // تحويل index إلى رقم العنصر الصحيح للعرض
+            // choiceList: [g(0), h(1), a(2), b(3), c(4), d(5), e(6), f(7)]
+            // item numbers: [6, 7, 8, 1, 2, 3, 4, 5]
+            var list = [6, 7, 8, 1, 2, 3, 4, 5];
+            var itemNumber = list[index];
             
-            if (itemElement.length > 0) {
-                var temp = itemElement.find('.selected div:nth-child(2) div').text();
+            console.log("Updating UI for item number:", itemNumber);
+            console.log("Choice index:", index, "→ Item number:", itemNumber);
+            
+            var amountElement = $(".item" + itemNumber + " .selected div:nth-child(2) div");
+            
+            if (amountElement.length > 0) {
+                var temp = amountElement.text().trim();
+                console.log("Current amount text:", temp);
+                
                 var currentAmount = parseInt(temp) || 0;
                 var newAmount = currentAmount + parseInt(currentGold);
-                itemElement.find('.selected div:nth-child(2) div').text(newAmount);
-                itemElement.find('.selected').show();
                 
-                console.log("Updated bet amount to:", newAmount);
+                amountElement.text(newAmount);
+                $(".item" + itemNumber + " .selected").show();
+                
+                console.log("✅ Bet updated: " + currentAmount + " + " + currentGold + " = " + newAmount);
+            } else {
+                console.error("❌ Amount element not found for .item" + itemNumber);
+                // محاولة أخرى
+                var selector = '[data-index="' + index + '"] .selected div:nth-child(2) div';
+                var altElement = $(selector);
+                if (altElement.length > 0) {
+                    var temp = altElement.text().trim();
+                    var currentAmount = parseInt(temp) || 0;
+                    var newAmount = currentAmount + parseInt(currentGold);
+                    altElement.text(newAmount);
+                    $('[data-index="' + index + '"] .selected').show();
+                    console.log("✅ Bet updated via data-index selector");
+                }
             }
 
             // تحديث الرصيد
             if (res.balance !== undefined) {
                 $('.balanceCount').text(parseFloat(res.balance).toFixed(2));
+                console.log("✅ Balance updated to:", res.balance);
             }
             
             // إعلام التطبيق بتحديث الرصيد
@@ -294,36 +365,20 @@ function sureClick(choice, index) {
             
             showSuccess(info.lang == "ar" ? "تم وضع الرهان ✓" : "Bet placed ✓");
         } else if (res.code == 10062) {
+            console.log("❌ Server: Insufficient balance");
             showSuccess(info.lang == "ar" ? "يرجى الشحن" : "Please recharge");
             // إعادة الرصيد
             $('.balanceCount').text(currentBalance.toFixed(2));
         } else {
+            console.error("❌ Error response:", res);
             showSuccess(res.message || 'Error');
             $('.balanceCount').text(currentBalance.toFixed(2));
         }
     }).catch(function(error) {
-        console.error("Choice error:", error);
+        console.error("❌ Choice error:", error);
         showSuccess(info.lang == "ar" ? "خطأ في النظام" : "System Error");
         $('.balanceCount').text(currentBalance.toFixed(2));
     });
-}
-
-// دالة مساعدة للحصول على رقم العنصر من الـ index
-function getItemNumberFromIndex(index) {
-    // تحويل من index إلى رقم العنصر (1-8)
-    var itemNumber = index + 1; // الافتراضي
-    var itemMap = {
-        0: 6, // item6
-        1: 7, // item7
-        2: 8, // item8
-        3: 1, // item1
-        4: 2, // item2
-        5: 3, // item3
-        6: 4, // item4
-        7: 5, // item5
-    };
-    
-    return itemMap[index] || itemNumber;
 }
 
 function roll(dir) {
@@ -376,14 +431,17 @@ var hideLock = false;
 function bindEvent() {
     console.log("=== bindEvent START ===");
     
-    // ربط اختيار قيمة الرهان
     $(".clickArea .clickItem").click(function() {
+        console.log("clickItem clicked, index:", $(this).data("index"));
         for (var i = 0; i < $(".clickItem").length; i++) {
             $($(".clickItem")[i]).removeClass("active");
         }
         $(this).addClass("active");
         currentGold = goldList[$(this).data("index")];
         console.log("Selected gold:", currentGold);
+        
+        // عرض تأكيد
+        showSuccess(info.lang == "ar" ? "تم اختيار المبلغ: " + currentGold : "Selected amount: " + currentGold);
     });
     
     try {
@@ -409,53 +467,40 @@ function bindEvent() {
     // إزالة أي أحداث سابقة
     $(document).off('click', '.item');
     
-    // ربط الأحداث باستخدام event delegation
+    // استخدام event delegation مع التعامل الصحيح لـ data-index
     $(document).on('click', '.item', function(e) {
         e.preventDefault();
         e.stopPropagation();
         
-        console.log("=== FRUIT CLICKED ===");
-        
-        // الحصول على data-index من العنصر
         var $item = $(this);
         var dataIndex = $item.data("index");
         
-        if (dataIndex === undefined) {
-            // محاولة الحصول من اسم الكلاس
-            var className = $item.attr('class') || '';
-            var match = className.match(/item(\d)/);
-            if (match) {
-                var itemNum = parseInt(match[1]);
-                // تحويل رقم العنصر إلى index
-                var itemToIndexMap = {
-                    1: 3,
-                    2: 4,
-                    3: 5,
-                    4: 6,
-                    5: 7,
-                    6: 0,
-                    7: 1,
-                    8: 2
-                };
-                dataIndex = itemToIndexMap[itemNum] || 0;
-            } else {
-                dataIndex = 0;
-            }
-        }
-        
-        console.log("Item clicked, data-index:", dataIndex, "status:", status);
+        console.log("=== FRUIT CLICKED ===");
+        console.log("Element class:", $item.attr('class'));
+        console.log("data-index from HTML:", dataIndex);
+        console.log("Current status:", status);
+        console.log("Current gold:", currentGold);
+        console.log("Choice list:", choiceList);
         
         if (status === 0) {
-            if (dataIndex >= 0 && dataIndex < choiceList.length) {
+            if (dataIndex !== undefined && dataIndex >= 0 && dataIndex < choiceList.length) {
                 var choice = choiceList[dataIndex];
-                console.log("Making bet choice:", choice);
+                console.log("Choice selected from data-index:", dataIndex, "→", choice);
+                
+                // استخدام data-index مباشرة كـ index للدالة sureClick
+                // لأن sureClick تستخدمه للوصول إلى choiceList
                 sureClick(choice, dataIndex);
             } else {
-                console.error("Invalid data-index:", dataIndex);
+                console.error("Invalid data-index value:", dataIndex);
+                console.log("Valid data-index range: 0 to", choiceList.length - 1);
                 showSuccess("Invalid selection");
             }
         } else {
-            showSuccess(info.lang == "ar" ? "لا يمكن وضع رهان الآن" : "Cannot place bet now");
+            console.warn("Cannot place bet now. Status:", status);
+            var msg = info.lang == "ar" ? "لا يمكن وضع رهان الآن" : "Cannot place bet now";
+            if (status == 1) msg += info.lang == "ar" ? " (جاري السحب)" : " (Drawing in progress)";
+            if (status == 2) msg += info.lang == "ar" ? " (تم عرض النتيجة)" : " (Result shown)";
+            showSuccess(msg);
         }
     });
     
@@ -488,13 +533,18 @@ function callFlamingoApp(action, params) {
         var requestId = 'req_' + (++requestIdCounter) + '_' + Date.now();
         
         console.log("=== callFlamingoApp START ===");
-        console.log("Action:", action, "RequestId:", requestId);
+        console.log("Action:", action);
+        console.log("RequestId:", requestId);
+        console.log("Params:", params);
         
         // تخزين callback
         pendingRequests[requestId] = {
             resolve: resolve,
-            reject: reject
+            reject: reject,
+            timestamp: Date.now()
         };
+        
+        console.log("Pending requests count:", Object.keys(pendingRequests).length);
         
         // إرسال الطلب للتطبيق
         var message = JSON.stringify({
@@ -503,10 +553,12 @@ function callFlamingoApp(action, params) {
             params: params || {}
         });
         
-        console.log("Sending to app:", message);
-        
+        console.log("Message to send:", message);
+        console.log("FlamingoApp available:", !!window.FlamingoApp);
+
         if (window.FlamingoApp) {
             try {
+                console.log("Sending message to app...");
                 window.FlamingoApp.postMessage(message);
                 console.log("Message sent successfully");
             } catch (e) {
@@ -815,7 +867,15 @@ function closeGame() {
     sendToApp({ action: 'close' });
 }
 
-// تهيئة لعبة التصحيح (Eruda) إذا لزم الأمر
-if (typeof eruda !== 'undefined') {
-    eruda.init();
+// إضافة تصفح السجلات في وضع التطوير
+if (window.location.href.indexOf('debug') > -1) {
+    console.log("Debug mode enabled");
+    $("body").append('<div id="debug-console" style="position:fixed; top:10px; left:10px; background:rgba(0,0,0,0.8); color:#0f0; padding:10px; z-index:9999; font-size:12px; max-height:200px; overflow:auto;"></div>');
+    
+    var originalLog = console.log;
+    console.log = function() {
+        originalLog.apply(console, arguments);
+        var args = Array.prototype.slice.call(arguments);
+        $("#debug-console").prepend('<div>' + args.join(' ') + '</div>');
+    };
 }
