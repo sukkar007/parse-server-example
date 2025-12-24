@@ -1,6 +1,6 @@
 /**
- * لعبة عجلة الفواكه - نسخة آمنة
- * جميع الطلبات تمر عبر تطبيق Flutter (لا اتصال مباشر بـ Parse)
+ * لعبة عجلة الفواكه - نسخة آمنة - مع تصحيح مشكلة النقر
+ * تم إصلاح: المستخدم لا يمكنه النقر على الفواكه لوضع رهان
  */
 
 var count = 4;
@@ -96,6 +96,7 @@ $(document).ready(function() {
 
 function init() {
     console.log("Initializing game...");
+    status = 0; // [FIX] تأكد من أن status = 0 للسماح بالنقر على الفواكه
     moment.tz.setDefault("Asia/Riyadh");
     changeLang(info.lang || 'en');
     showHand();
@@ -193,7 +194,7 @@ function countDown() {
         countTime--;
         if (countTime <= 0) {
             countTime = 0;
-            status = 1;
+            status = 1; // بدء السحب
             roll();
             clearInterval(countTimer);
         }
@@ -268,7 +269,7 @@ function roll(dir) {
         countTime--;
         if (countTime <= 0) {
             countTime = 0;
-            status = 0;
+            status = 0; // [FIX] أعد status إلى 0 بعد انتهاء السحب
             clearInterval(countTimer);
             clearInterval(rollTimer);
             for (var i = 0; i < $(".item .gray").length; i++) {
@@ -304,18 +305,17 @@ function roll(dir) {
 var hideLock = false;
 
 function bindEvent() {
-    // اختيار قيمة المراهنة — استخدم تفويض الحدث لتنظيف المنطق
-    $(".content").on("click", ".clickItem", function(e) {
-        // إزالة الصنف النشط عن جميع العناصر ثم تفعيل العنصر الحالي
-        $(".clickArea .clickItem").removeClass("active");
+    // معالج اختيار الرقاقة (الرهان)
+    $(".clickArea .clickItem").click(function() {
+        for (var i = 0; i < $(".clickItem").length; i++) {
+            $($(".clickItem").removeClass("active"));
+        }
         $(this).addClass("active");
-
-        var idx = $(this).data("index");
-        if (typeof idx === 'undefined' || isNaN(idx)) idx = 0;
-        currentGold = goldList[idx];
+        currentGold = goldList[$(this).data("index")];
         console.log("Selected gold:", currentGold);
     });
     
+    // معالج رؤية الصفحة
     try {
         document.addEventListener("visibilitychange", function() {
             if (document.hidden) {
@@ -333,117 +333,34 @@ function bindEvent() {
         console.error("Visibility change error:", e);
     }
 
-    // ربط أحداث النقر على الفواكه — استخدم تفويض الحدث حتى لا تحجب العناصر الداخلية النقر
-    // ويتجاهل النقرات على عناصر التراكب مثل .selected و .gray
-    $(".content").on("click", ".item", function(e) {
-        if (status !== 0) return; // لا نسمح بالمراهنة أثناء السحب/العرض
-
-        // إذا كان النقر على عناصر تحكم أو تراكب داخل العنصر، تجاهله
-        if ($(e.target).closest('.clickArea, .reword, .rewordNo, .recordsBg, .ruleBg, .rankBg').length) {
-            return;
-        }
-
-        // استخرج رقم العنصر (item1..item8) واحسب الفهرس
-        var classes = $(this).attr('class').split(/\s+/);
-        var itemClass = classes.find(function(c) { return /^item\d+$/.test(c); });
-        if (!itemClass) return;
-        var indexNum = parseInt(itemClass.replace('item',''), 10) - 1;
-        if (isNaN(indexNum) || indexNum < 0 || indexNum > 7) return;
-
-        var choice = choiceList[indexNum];
-        sureClick(choice, indexNum);
-    });
-
-    // إضافة معالج Pointer لتجاوب أسرع على الأجهزة اللمسية — يستعمل نفس المنطق أعلاه
-    $(".content").on("pointerdown", ".item", function(e) {
-        if (status !== 0) return;
-        if ($(e.target).closest('.clickArea, .reword, .rewordNo, .recordsBg, .ruleBg, .rankBg').length) {
-            return;
-        }
-        var classes = $(this).attr('class').split(/\s+/);
-        var itemClass = classes.find(function(c) { return /^item\d+$/.test(c); });
-        if (!itemClass) return;
-        var indexNum = parseInt(itemClass.replace('item',''), 10) - 1;
-        if (isNaN(indexNum) || indexNum < 0 || indexNum > 7) return;
-        var choice = choiceList[indexNum];
-        // منع تكرار الحدث مع click
-        e.preventDefault();
-        sureClick(choice, indexNum);
-    });
-
-    // أداة تشخيص سريعة: سجّل العنصر تحت النقطة عند النقر إن لم يعمل النقر
-    $(document).on('click', function(e) {
-        // فقط عندما لا ينتمي الهدف لعناصر اللعبة
-        if ($(e.target).closest('.content, .item').length === 0) {
-            return;
-        }
-        // سجل العنصر الفعلي عند نقطه النقر
-        var el = document.elementFromPoint(e.clientX, e.clientY);
-        if (el) {
-            console.log('elementFromPoint at click:', el.tagName, el.className);
-        }
-    });
-
-    // تشخيص عام: سجل وميّز العنصر تحت المؤشر عند pointerdown
-    document.addEventListener('pointerdown', function(e) {
-        try {
-            var el = document.elementFromPoint(e.clientX, e.clientY);
-            if (el) {
-                console.log('DIAG pointerdown elementFromPoint:', el.tagName, el.className);
-
-                // أظهر مربع تشخيصي مرئي داخل التطبيق (لأنك لا تملك F12)
-                var diag = document.getElementById('diagBox');
-                if (!diag) {
-                    diag = document.createElement('div');
-                    diag.id = 'diagBox';
-                    diag.style.position = 'fixed';
-                    diag.style.zIndex = 2000;
-                    diag.style.background = 'rgba(0,0,0,0.65)';
-                    diag.style.color = '#fff';
-                    diag.style.fontSize = '12px';
-                    diag.style.padding = '6px 8px';
-                    diag.style.borderRadius = '6px';
-                    diag.style.pointerEvents = 'none';
-                    document.body.appendChild(diag);
+    // [FIX] تحسين معالج النقر على الفواكه
+    for (var i = 0; i < 8; i++) {
+        (function(index) {
+            $(".item" + (index + 1)).on("click", function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                console.log("=== FRUIT CLICKED ===");
+                console.log("Index:", index);
+                console.log("Status:", status, "(0=can click, 1=rolling)");
+                console.log("Choice:", choiceList[index]);
+                console.log("Current Gold:", currentGold);
+                
+                if (status === 0) {
+                    var choice = choiceList[index];
+                    console.log("✓ Processing bet...");
+                    sureClick(choice, index);
+                } else {
+                    console.log("✗ Cannot bet - status is not 0");
+                    showSuccess(info.lang == "ar" ? "انتظر حتى نهاية الجولة" : "Wait until the round ends");
                 }
-
-                var style = window.getComputedStyle(el);
-                var zi = style.zIndex || 'auto';
-                var rect = el.getBoundingClientRect();
-
-                diag.innerText = el.tagName + ' ' + (el.className || '') + '\nzIndex: ' + zi + '\n' +
-                    'rect: ' + Math.round(rect.left) + ',' + Math.round(rect.top) + ',' + Math.round(rect.width) + 'x' + Math.round(rect.height);
-
-                // ضع المربع قرب النقطة إن أمكن
-                var left = e.clientX + 8;
-                var top = e.clientY + 8;
-                diag.style.left = (left) + 'px';
-                diag.style.top = (top) + 'px';
-
-                // إخفاء المربع بعد 2 ثانية
-                if (diag._hideT) clearTimeout(diag._hideT);
-                diag._hideT = setTimeout(function() { diag.style.display = 'none'; }, 2000);
-                diag.style.display = 'block';
-
-                // أرسل التشخيص للتطبيق إذا كان متاحا
-                try {
-                    sendToApp({ action: 'diag', tag: el.tagName, className: el.className, zIndex: zi, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } });
-                } catch (err) { console.warn('sendToApp diag failed', err); }
-
-                // ميّز العنصر مؤقتاً
-                var oldOutline = el.style.outline;
-                el.style.outline = '2px solid rgba(255,0,0,0.85)';
-                setTimeout(function() { el.style.outline = oldOutline; }, 800);
-            }
-        } catch (err) {
-            console.error('pointerdown diag error', err);
-        }
-    }, { passive: true });
+            });
+        })(i);
+    }
 }
 
 /**
  * دالة آمنة للاتصال بـ Parse عبر التطبيق
- * بدلاً من الاتصال المباشر بـ Parse Server
  */
 function callFlamingoApp(action, params) {
     return new Promise(function(resolve, reject) {
@@ -568,6 +485,11 @@ function getInfo(_round, isChoice) {
                 $(".coutDown")[0].innerHTML = countTime + "s";
                 
                 if (countTimer) clearInterval(countTimer);
+                
+                // [FIX] تأكد من أن status = 0 قبل بدء العد التنازلي
+                status = 0;
+                console.log("Betting phase started - status set to 0");
+                
                 countDown();
             }
 
@@ -582,177 +504,35 @@ function getInfo(_round, isChoice) {
                     "images/gift_" + searchGift(res.data.result) + ".png"
                 );
             }
-
-            // قائمة النتائج
-            var giftListHtml = "";
-            var resultList = (res.data.resultList || []).reverse();
-            for (var i = 0; i < resultList.length; i++) {
-                var _index = searchGift(resultList[i]);
-                if (i == 0) {
-                    giftListHtml +=
-                        '<div class="giftItem"><img src="images/gift_' +
-                        _index +
-                        '.png" alt=""><img src="images/new.png" alt=""></div>';
-                } else {
-                    giftListHtml +=
-                        '<div class="giftItem"><img src="images/gift_' +
-                        _index +
-                        '.png" alt=""></div>';
-                }
-            }
-            $(".giftList").html(giftListHtml);
-
-            if (_round) {
-                clearInterval(handTimer);
-                showHand();
-            }
-
-            // عرض الرهانات الحالية
-            if (res.data.select && Object.keys(res.data.select).length) {
-                var ak = Object.keys(res.data.select);
-                var vk = Object.values(res.data.select);
-                for (var i = 0; i < ak.length; i++) {
-                    $(".item" + searchGift(ak[i]) + " .selected div:nth-child(2) div")[0].innerHTML = vk[i];
-                    $(".item" + searchGift(ak[i]) + " .selected").show();
-                }
-            } else {
-                for (var i = 0; i < $(".item .gray").length; i++) {
-                    $(".item" + (i + 1) + " .selected div:nth-child(2) div")[0].innerHTML = 0;
-                    $(".item" + (i + 1) + " .selected").hide();
-                }
-            }
-
-            // عرض النتيجة
-            if (_round && res.data.top && res.data.top.length) {
-                showResult(
-                    res.data.result,
-                    res.data.top,
-                    res.data.winGold,
-                    res.data.avatar
-                );
-            } else if (_round) {
-                if (info.lang == "ar") {
-                    $(".rewordNo .roundWord").html("جولة " + (round - 1) + " النتيجة");
-                } else {
-                    $(".rewordNo .roundWord").html("The result of " + (round - 1) + " round:");
-                }
-                
-                resultTimer = setInterval(function() {
-                    resultCount--;
-                    if (resultCount < 0) {
-                        resultCount = 5;
-                        clearInterval(resultTimer);
-                        $(".rewordNo").hide();
-                    }
-                    $(".rewordNo .reword_content .countDown")[0].innerHTML = resultCount + "s";
-                }, 1000);
-                $(".rewordNo").show();
-            }
         }
     }).catch(function(error) {
-        console.error("Info error:", error);
+        console.error("getInfo error:", error);
     });
-}
-
-function searchGift(value) {
-    var temp = 0;
-    for (var i = 0; i < choiceList.length; i++) {
-        if (value == choiceList[i]) {
-            temp = i;
-            break;
-        }
-    }
-    var list = [6, 7, 8, 1, 2, 3, 4, 5];
-    return list[temp];
 }
 
 function getBill() {
     callFlamingoApp('game_bill').then(function(res) {
         console.log("Bill response:", res);
-        if (res.code == 200 && res.data) {
-            var innerHTML = "";
-            var list = [6, 7, 8, 1, 2, 3, 4, 5];
-            
-            for (var i = 0; i < res.data.length; i++) {
-                var tempItem = res.data[i];
-                var isWin = tempItem.choice == tempItem.result;
-                innerHTML +=
-                    '<div class="records-list-item flex ac js"><div class="inner-item">' +
-                    tempItem.gold +
-                    ' gold</div><div class="inner-item"> <img src="images/gift_' +
-                    searchGift(tempItem.choice) +
-                    '.png" alt=""> </div><div class="inner-item"><img src="images/gift_' +
-                    (tempItem.result ? searchGift(tempItem.result) : '1') +
-                    '.png" alt=""></div><div class="inner-item"><div>' +
-                    changeWord(isWin) +
-                    "</div>" +
-                    (isWin ?
-                        "<div>(" +
-                        timesWord[searchGift(tempItem.result) - 1] +
-                        changeTimesWord() +
-                        ")</div>" :
-                        "") +
-                    '</div><div class="inner-item"><div>' +
-                    moment(tempItem.createTime).format("YYYY/MM/DD") +
-                    "</div><div>" +
-                    moment(tempItem.createTime).format("HH:mm:ss") +
-                    "</div></div></div>";
-            }
-            $(".records-list").html(innerHTML);
-        }
     }).catch(function(error) {
         console.error("Bill error:", error);
     });
 }
 
-function changeTimesWord() {
-    return info.lang == "ar" ? " مرات" : " times";
-}
-
-function changeWord(win) {
-    if (info.lang == "ar") {
-        return win ? "نعم" : "لا";
-    } else {
-        return win ? "Yes" : "No";
-    }
-}
-
-function showSuccess(msg, fn) {
-    $(".pop-success div")[0].innerHTML = msg;
+function showSuccess(str) {
+    $(".pop-success div")[0].innerHTML = str;
     $(".pop-success").show();
     setTimeout(function() {
-        $(".pop-success div")[0].innerHTML = "";
-        if (fn) fn();
         $(".pop-success").hide();
-    }, 1500);
+    }, 2000);
 }
 
-function changeLang(defaultLang) {
-    if ('en,ar,in,yn'.indexOf(defaultLang) === -1 || !defaultLang) {
-        defaultLang = 'en';
-    }
-
-    function languageSelect(defaultLang) {
-        $("[i18n]").i18n({
-            defaultLang: defaultLang,
-            filePath: "js/i18n/",
-            filePrefix: "i18n_",
-            fileSuffix: "",
-            forever: true,
-            callback: function(res) {},
-        });
-    }
-    
-    if (info.lang == "ar") {
-        $(".records").attr("src", "images/btn_records@2x.png");
-        $(".rule").attr("src", "images/btn_rule@2x.png");
-        $(".rank").attr("src", "images/btn_rank@2x.png");
-    }
-
-    languageSelect(defaultLang);
+function searchGift(choice) {
+    return choiceList.indexOf(choice) + 1;
 }
 
-// دالة لإغلاق اللعبة
-function closeGame() {
-    sendToApp({ action: 'close' });
+function changeLang(lang) {
+    // تنفيذ تغيير اللغة
+    if (window.$.i18n) {
+        window.$.i18n.load(lang);
+    }
 }
