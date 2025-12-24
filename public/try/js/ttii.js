@@ -1,6 +1,6 @@
 /**
  * لعبة عجلة الفواكه - نسخة آمنة
- * جميع الطلبات تمر عبر تطبيق Flutter (لا اتصال مباشر بـ Parse)
+ * تتصل مباشرة بـ Parse Server
  */
 
 var count = 4;
@@ -22,8 +22,8 @@ var status = 0; // 0 يمكن النقر, 1 جاري السحب, 2 تم السح
 var currentGold = 1;
 var openDrawTimer = null;
 
-// معلومات اللاعب من تطبيق Flamingo (بدون token للأمان)
-var info = window.flamingoPlayerInfo || {
+// معلومات اللاعب
+var info = {
     uid: '',
     lang: 'en',
     nickname: '',
@@ -36,7 +36,7 @@ var info = window.flamingoPlayerInfo || {
 var pendingRequests = {};
 var requestIdCounter = 0;
 
-console.log("Player Info:", info);
+console.log("Game initialized");
 
 // استلام معلومات اللاعب من التطبيق
 window.onFlamingoPlayerInfo = function(playerInfo) {
@@ -49,15 +49,17 @@ window.onFlamingoPlayerInfo = function(playerInfo) {
 window.onFlamingoResponse = function(response) {
     console.log("Received response from app:", response);
     
+    if (!response) return;
+    
     var requestId = response.requestId;
     if (requestId && pendingRequests[requestId]) {
         var callback = pendingRequests[requestId];
         delete pendingRequests[requestId];
         
-        if (response.success) {
-            callback.resolve(response.data);
+        if (response.success || response.code === 200) {
+            callback.resolve(response.data || response);
         } else {
-            callback.reject(response.error || 'Unknown error');
+            callback.reject(response.error || response.message || 'Unknown error');
         }
     }
 };
@@ -96,14 +98,19 @@ $(document).ready(function() {
 
 function init() {
     console.log("Initializing game...");
+    console.log("Info object:", info);
+    
     moment.tz.setDefault("Asia/Riyadh");
     changeLang(info.lang || 'en');
-    status = 0; // ضمان أن الحالة تبدأ بـ 0
     showHand();
     bindEvent();
-    getInfo();
-    getBill();
-    getRank();
+    
+    // انتظر قليلاً قبل جلب البيانات
+    setTimeout(function() {
+        getInfo();
+        getBill();
+        getRank();
+    }, 500);
 }
 
 function showHand() {
@@ -190,6 +197,7 @@ function countDown() {
     if (countTimer) {
         clearInterval(countTimer);
     }
+    status = 0; // تأكيد أن الحالة جاهزة للنقر
     countTimer = setInterval(function() {
         countTime--;
         if (countTime <= 0) {
@@ -207,23 +215,34 @@ function openDraw() {
 }
 
 function sureClick(choice, index) {
+    console.log("sureClick called with:", choice, index, "Gold:", currentGold);
+    
     // التحقق من الرصيد
     let currentBalance = parseFloat($('.balanceCount').text());
+    if (isNaN(currentBalance)) currentBalance = 0;
+    
     if (currentBalance < currentGold) {
         showSuccess(info.lang == "ar" ? "رصيد غير كافٍ!" : "Insufficient balance!");
+        return;
+    }
+
+    // التحقق من توفر التطبيق
+    if (!window.FlamingoApp) {
+        console.error("FlamingoApp not available");
+        showSuccess(info.lang == "ar" ? "خطأ: التطبيق غير متوفر" : "Error: App not available");
         return;
     }
 
     // تحديث الرصيد مؤقتاً
     $('.balanceCount').text((currentBalance - currentGold).toFixed(2));
 
-    // إرسال الطلب عبر التطبيق (آمن)
+    // إرسال الطلب عبر التطبيق
     callFlamingoApp('game_choice', {
         choice: choice,
         gold: currentGold
     }).then(function(res) {
         console.log("Choice response:", res);
-        if (res.code == 200) {
+        if (res && res.code == 200) {
             selectCount += 1;
             if (!selectArr.includes(choice)) {
                 selectArr.push(choice);
@@ -240,11 +259,9 @@ function sureClick(choice, index) {
                 $('.balanceCount').text(parseFloat(res.balance).toFixed(2));
             }
             
-            // إعلام التطبيق بتحديث الرصيد
-            sendToApp({ action: 'refreshBalance' });
+            showSuccess(info.lang == "ar" ? "تم وضع الرهان بنجاح" : "Bet placed successfully");
         } else if (res.code == 10062) {
             showSuccess(info.lang == "ar" ? "يرجى الشحن" : "Please recharge");
-            // إعادة الرصيد
             $('.balanceCount').text(currentBalance.toFixed(2));
         } else {
             showSuccess(res.message || 'Error');
@@ -252,7 +269,7 @@ function sureClick(choice, index) {
         }
     }).catch(function(error) {
         console.error("Choice error:", error);
-        showSuccess(info.lang == "ar" ? "خطأ في النظام" : "System Error");
+        showSuccess(info.lang == "ar" ? "خطأ في وضع الرهان" : "Error placing bet");
         $('.balanceCount').text(currentBalance.toFixed(2));
     });
 }
@@ -334,10 +351,15 @@ function bindEvent() {
     // ربط أحداث النقر على الفواكه
     for (var i = 0; i < 8; i++) {
         (function(index) {
-            $(".item" + (index + 1)).click(function() {
-                console.log("Click attempt. Current status:", status);
-                if (status === 0) {
+            $(".item" + (index + 1)).on('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                console.log("Item clicked, index:", index, "status:", status);
+                
+                if (status === 0 || status === undefined) {
                     var choice = choiceList[index];
+                    console.log("Making choice:", choice);
                     sureClick(choice, index);
                 } else {
                     showSuccess(info.lang == "ar" ? "لا يمكن وضع رهان الآن، يرجى الانتظار للجولة القادمة." : "Cannot place a bet now, please wait for the next round.");
@@ -347,10 +369,6 @@ function bindEvent() {
     }
 }
 
-/**
- * دالة آمنة للاتصال بـ Parse عبر التطبيق
- * بدلاً من الاتصال المباشر بـ Parse Server
- */
 function callFlamingoApp(action, params) {
     return new Promise(function(resolve, reject) {
         var requestId = 'req_' + (++requestIdCounter) + '_' + Date.now();
@@ -358,7 +376,8 @@ function callFlamingoApp(action, params) {
         // تخزين callback
         pendingRequests[requestId] = {
             resolve: resolve,
-            reject: reject
+            reject: reject,
+            timestamp: Date.now()
         };
         
         // إرسال الطلب للتطبيق
@@ -371,8 +390,16 @@ function callFlamingoApp(action, params) {
         console.log("Sending to app:", message);
         
         if (window.FlamingoApp) {
-            window.FlamingoApp.postMessage(message);
+            try {
+                window.FlamingoApp.postMessage(message);
+            } catch (e) {
+                console.error("Error sending message to app:", e);
+                delete pendingRequests[requestId];
+                reject('Failed to send message to app: ' + e.message);
+            }
         } else {
+            console.error("FlamingoApp not available");
+            delete pendingRequests[requestId];
             reject('FlamingoApp not available');
         }
         
@@ -558,6 +585,11 @@ function getInfo(_round, isChoice) {
         }
     }).catch(function(error) {
         console.error("Info error:", error);
+        // محاولة إعادة الاتصال
+        status = 0; // تأكيد أن الحالة جاهزة
+        setTimeout(function() {
+            getInfo();
+        }, 2000);
     });
 }
 
