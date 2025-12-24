@@ -100,6 +100,9 @@ var env = (function() {
 $(document).ready(function() {
     console.log("=== Document ready ===");
     
+    // إضافة زر التصحيح
+    addDebugButton();
+    
     // انتظار معلومات اللاعب من التطبيق
     if (window.flamingoPlayerInfo) {
         info = window.flamingoPlayerInfo;
@@ -147,6 +150,87 @@ function testElements() {
     console.log("Current status:", status);
 }
 
+// دالة للتحقق والتحديث المستمر للحالة
+function updateGameStatus() {
+    // تحديث الحالة بناءً على الوقت المتبقي
+    if (countTime > 0) {
+        // إذا كان هناك وقت متبقي، يجب أن يكون status = 0
+        if (status !== 0) {
+            console.log("🔄 Auto-fixing status: countTime > 0, setting status from", status, "to 0");
+            status = 0;
+            
+            // تأكد من أن اليد تظهر
+            if ($(".hand").is(":hidden")) {
+                showHand();
+            }
+        }
+    } else {
+        // إذا انتهى الوقت، يجب أن يكون status = 1
+        if (status === 0) {
+            console.log("🔄 Auto-fixing status: countTime <= 0, setting status from 0 to 1");
+            status = 1;
+            hideHand();
+        }
+    }
+    
+    // تحديث عرض الوقت المتبقي
+    if ($(".coutDown").length > 0) {
+        $(".coutDown")[0].innerHTML = countTime + "s";
+    }
+}
+
+// إضافة زر تصحيح إلى الصفحة
+function addDebugButton() {
+    if ($("#debug-button").length === 0) {
+        var debugBtn = $('<button id="debug-button">DEBUG</button>');
+        debugBtn.css({
+            position: 'fixed',
+            top: '10px',
+            right: '10px',
+            zIndex: '9999',
+            background: '#f00',
+            color: '#fff',
+            padding: '10px',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: 'pointer'
+        });
+        
+        debugBtn.click(function() {
+            console.log("=== DEBUG INFO ===");
+            console.log("status:", status);
+            console.log("countTime:", countTime);
+            console.log("currentGold:", currentGold);
+            console.log("round:", round);
+            console.log("choiceList:", choiceList);
+            
+            // عرض جميع العناصر مع data-index
+            $(".item").each(function() {
+                console.log($(this).attr('class'), "data-index:", $(this).data("index"));
+            });
+            
+            // محاولة إعادة تعيين status إلى 0
+            status = 0;
+            console.log("✅ Reset status to 0 manually");
+            showSuccess("Debug: Status reset to 0");
+            
+            // عرض اليد
+            showHand();
+            
+            // إعادة تعيين countTime إذا كان صفراً
+            if (countTime <= 0) {
+                countTime = 10;
+                console.log("✅ Reset countTime to 10");
+            }
+            
+            // تحديث العرض
+            updateGameStatus();
+        });
+        
+        $("body").append(debugBtn);
+    }
+}
+
 function init() {
     console.log("=== Initializing game ===");
     
@@ -165,12 +249,20 @@ function init() {
         console.log("Initialized currentGold to:", currentGold);
     }
     
+    // تأكد من أن status = 0 في البداية
+    status = 0;
+    countTime = 10; // تعيين وقت افتراضي
+    console.log("✅ Set initial status to 0, countTime to 10");
+    
     // تحميل البيانات
     setTimeout(function() {
         getInfo();
         getBill();
         getRank();
     }, 1000);
+    
+    // بدء تحديث الحالة
+    setInterval(updateGameStatus, 1000);
     
     // عرض رسالة ترحيب
     setTimeout(function() {
@@ -259,18 +351,35 @@ function showResult(result, topList, winGold, avatar) {
 }
 
 function countDown() {
+    console.log("Starting countDown, countTime:", countTime);
+    
     if (countTimer) {
         clearInterval(countTimer);
     }
+    
+    // تأكد من أن status = 0 عند بدء العد التنازلي
+    status = 0;
+    console.log("✅ Set status to 0 for countDown");
+    
     countTimer = setInterval(function() {
         countTime--;
+        console.log("Countdown tick:", countTime);
+        
         if (countTime <= 0) {
             countTime = 0;
             status = 1;
+            console.log("⏰ Time's up! Setting status to 1");
             roll();
             clearInterval(countTimer);
         }
-        $(".coutDown")[0].innerHTML = countTime + "s";
+        
+        // تحديث العرض
+        if ($(".coutDown").length > 0) {
+            $(".coutDown")[0].innerHTML = countTime + "s";
+        }
+        
+        // تحديث الحالة بناءً على الوقت المتبقي
+        updateGameStatus();
     }, 1000);
 }
 
@@ -382,6 +491,7 @@ function sureClick(choice, index) {
 }
 
 function roll(dir) {
+    console.log("Starting roll function");
     hideHand();
     selectCount = 0;
     selectArr = [];
@@ -393,7 +503,8 @@ function roll(dir) {
         countTime--;
         if (countTime <= 0) {
             countTime = 0;
-            status = 0;
+            status = 0; // إعادة status إلى 0 بعد انتهاء الجولة
+            console.log("🎲 Roll finished, setting status to 0");
             clearInterval(countTimer);
             clearInterval(rollTimer);
             for (var i = 0; i < $(".item .gray").length; i++) {
@@ -474,33 +585,66 @@ function bindEvent() {
         
         var $item = $(this);
         var dataIndex = $item.data("index");
+        var className = $item.attr('class') || '';
         
         console.log("=== FRUIT CLICKED ===");
-        console.log("Element class:", $item.attr('class'));
+        console.log("Element class:", className);
         console.log("data-index from HTML:", dataIndex);
         console.log("Current status:", status);
         console.log("Current gold:", currentGold);
         console.log("Choice list:", choiceList);
+        console.log("Is status === 0?", status === 0);
+        console.log("Type of status:", typeof status);
+        
+        // عرض جميع المتغيرات للتصحيح
+        console.log("=== DEBUG INFO ===");
+        console.log("countTime:", countTime);
+        console.log("round:", round);
+        console.log("selectCount:", selectCount);
+        console.log("selectArr:", selectArr);
+        
+        // عرض حالة جميع المؤقتات
+        console.log("Timers: countTimer=", !!countTimer, "handTimer=", !!handTimer, "rollTimer=", !!rollTimer);
         
         if (status === 0) {
+            console.log("✅ Status is 0 - CAN place bet");
+            
             if (dataIndex !== undefined && dataIndex >= 0 && dataIndex < choiceList.length) {
                 var choice = choiceList[dataIndex];
                 console.log("Choice selected from data-index:", dataIndex, "→", choice);
                 
                 // استخدام data-index مباشرة كـ index للدالة sureClick
-                // لأن sureClick تستخدمه للوصول إلى choiceList
                 sureClick(choice, dataIndex);
             } else {
                 console.error("Invalid data-index value:", dataIndex);
                 console.log("Valid data-index range: 0 to", choiceList.length - 1);
-                showSuccess("Invalid selection");
+                showSuccess("Invalid selection - data-index: " + dataIndex);
             }
         } else {
-            console.warn("Cannot place bet now. Status:", status);
-            var msg = info.lang == "ar" ? "لا يمكن وضع رهان الآن" : "Cannot place bet now";
-            if (status == 1) msg += info.lang == "ar" ? " (جاري السحب)" : " (Drawing in progress)";
-            if (status == 2) msg += info.lang == "ar" ? " (تم عرض النتيجة)" : " (Result shown)";
+            console.warn("❌ Cannot place bet now. Status:", status);
+            
+            // شرح معنى status للمستخدم
+            var statusMessages = {
+                0: "يمكن النقر",
+                1: "جاري السحب",
+                2: "تم السحب"
+            };
+            
+            var msg = info.lang == "ar" ? 
+                "لا يمكن وضع رهان الآن (الحالة: " + status + " - " + (statusMessages[status] || "غير معروف") + ")" :
+                "Cannot place bet now (Status: " + status + " - " + (statusMessages[status] || "Unknown") + ")";
+            
+            if (status == 1) msg += info.lang == "ar" ? " - انتظر حتى تنتهي الجولة" : " - Wait for round to finish";
+            if (status == 2) msg += info.lang == "ar" ? " - انتظر الجولة القادمة" : " - Wait for next round";
+            
             showSuccess(msg);
+            
+            // عرض رسالة إضافية في console
+            console.log("Status details:", {
+                status: status,
+                countTime: countTime,
+                canBet: countTime > 0 && status === 0
+            });
         }
     });
     
