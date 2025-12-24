@@ -15,36 +15,46 @@
         .item {
             cursor: pointer !important;
             z-index: 10 !important;
-            -webkit-tap-highlight-color: transparent;
+            -webkit-tap-highlight-color: rgba(0,0,0,0);
             touch-action: manipulation;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
         }
+        
+        /* السماح بتمرير النقرات عبر الطبقات الفرعية */
         .innerContent,
+        .innerContent > *,
         .selected,
+        .selected > *,
         .gray,
-        .hand {
-            pointer-events: none !important;
-        }
+        .hand,
+        .hand > *,
         .item > img {
             pointer-events: none !important;
         }
-    </style>
-    <!-- <script async src="https://www.googletagmanager.com/gtag/js?id=G-6FCRRSYC0G"></script>
-    <script>
-        window.dataLayer = window.dataLayer || [];
-
-        function gtag() {
-            dataLayer.push(arguments);
+        
+        /* التأكد من أن العنصر الرئيسي يستقبل النقرات */
+        .item {
+            pointer-events: auto !important;
         }
-        gtag('js', new Date());
-
-        gtag('config', 'G-6FCRRSYC0G');
-    </script> -->
+        
+        /* تحسين استجابة اللمس */
+        * {
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .clickItem {
+            cursor: pointer !important;
+            -webkit-tap-highlight-color: rgba(0,0,0,0);
+            touch-action: manipulation;
+        }
+    </style>
 </head>
 
 <body>
     <div class="container">
         <img class="bg" src="https://parse-server-example-o1ht.onrender.com/public/try/images/bg.png" alt="" />
-        <!-- <img src="https://parse-server-example-o1ht.onrender.com/public/try/images/close.png" class="close" alt=""> -->
 
         <div class="content">
             <div class="round"></div>
@@ -55,12 +65,6 @@
                 <div i18n="i18n.please">Please</div>
                 <div i18n="i18n.selectFood">select food</div>
             </div>
-            <!-- <div class="everyTime" i18n="i18n.Event">
-                Event time
-            </div>
-            <div class="time">
-                14:00 - 5:00 (GMT+3）
-            </div> -->
             <div class="coutDown">50s</div>
             <div class="title title2" i18n="i18n.announce">announce</div>
 
@@ -274,9 +278,6 @@
             <!-- 排行榜 -->
             <div class="rankBg">
                 <div class="rankTitle" i18n="i18n.rankTitle">Rank</div>
-                <!-- <div class="rewordBtn" i18n="i18n.Reward">
-                    Reward
-                </div> -->
                 <img class="modalBack" src="https://parse-server-example-o1ht.onrender.com/public/try/images/modal_back.png" alt="" />
                 <div class="topThree flex js"></div>
                 <div class="topList"></div>
@@ -325,9 +326,6 @@
                 </div>
                 <img class="modalBack" src="https://parse-server-example-o1ht.onrender.com/public/try/images/modal_back.png" alt="" />
                 <div class="records-table-head flex ac js">
-                    <!-- <div class="table-item" i18n="i18n.Round">
-                        Round
-                    </div> -->
                     <div class="table-item" i18n="i18n.Level">等级</div>
                     <div class="table-item" i18n="i18n.Selected">选中</div>
                     <div class="table-item" i18n="i18n.Result">结果</div>
@@ -350,12 +348,6 @@
                     <div class="ruleItem" i18n="i18n.rule3">
                         3. You can bet on up to 6 kinds of food each round. There is no limit for the amount you bet.
                     </div>
-                    <!-- <div class="ruleItem" i18n="i18n.rule4">4. Oohla reserves all rights of interpretation of the
-                        event.</div> -->
-                    <!-- <div class="ruleItem">
-                        <span>No.1 of the list: </span>
-                        <img src="https://parse-server-example-o1ht.onrender.com/public/try/images/1@2x.png" alt="">
-                    </div> -->
                     <div class="ruleItem">
                         <span i18n="i18n.rule4">4. No.1 of the list: </span>
                         <div class="flex ac">
@@ -397,7 +389,6 @@
             </div>
         </div>
         <div class="reword">
-            <!-- <img src="https://parse-server-example-o1ht.onrender.com/public/try/images/bg_reword.png" alt=""> -->
             <div class="reword_content">
                 <div class="countDown">5s</div>
                 <div class="prize">
@@ -441,7 +432,6 @@
             </div>
         </div>
         <div class="rewordNo">
-            <!-- <div></div> -->
             <div class="reword_content">
                 <div class="countDown">5s</div>
                 <div class="noPrize1">
@@ -451,7 +441,6 @@
                     </div>
                     <div i18n="i18n.noOne">Unfortunately, No one win this game</div>
                 </div>
-                <!-- <div class="reword_person flex ac js"></div> -->
             </div>
         </div>
         <div class="pop-success">
@@ -459,10 +448,6 @@
         </div>
     </div>
     
- 
-
-
-
 </body>
 <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
 <script src="https://parse-server-example-o1ht.onrender.com/public/try/lib/jquery-3.2.1.min.js"></script>
@@ -470,7 +455,6 @@
 <script src="https://parse-server-example-o1ht.onrender.com/public/try/lib/common.js"></script>
 <script src="https://parse-server-example-o1ht.onrender.com/public/try/js/moment.js"></script>
 <script src="https://parse-server-example-o1ht.onrender.com/public/try/js/timeZone.js"></script>
-<!-- <script src="../lib/vconsole.min.js"></script> -->
 <script src="https://parse-server-example-o1ht.onrender.com/public/try/lib/native.js"></script>
 <script src="https://parse-server-example-o1ht.onrender.com/public/try/js/ttii.js"></script>
 
