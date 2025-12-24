@@ -21,6 +21,7 @@ var choiceList = ["g", "h", "a", "b", "c", "d", "e", "f"];
 var status = 0; // 0 يمكن النقر, 1 جاري السحب, 2 تم السحب
 var currentGold = 1;
 var openDrawTimer = null;
+var isProcessingClick = false; // منع النقرات المتعددة
 
 // معلومات اللاعب من تطبيق Flamingo (بدون token للأمان)
 var info = window.flamingoPlayerInfo || {
@@ -206,22 +207,46 @@ function openDraw() {
 }
 
 function sureClick(choice, index) {
+    console.log("=== sureClick called ===");
+    console.log("Choice:", choice, "Index:", index, "Gold:", currentGold);
+    console.log("Status:", status, "isProcessingClick:", isProcessingClick);
+    
+    // منع النقرات المتعددة
+    if (isProcessingClick) {
+        console.log("Already processing a click, ignoring...");
+        return;
+    }
+    
+    // التحقق من الحالة
+    if (status !== 0) {
+        console.log("Cannot bet - status is not 0");
+        showSuccess(info.lang == "ar" ? "لا يمكن الرهان الآن" : "Cannot bet now");
+        return;
+    }
+    
     // التحقق من الرصيد
-    let currentBalance = parseFloat($('.balanceCount').text());
+    var currentBalance = parseFloat($('.balanceCount').text()) || 0;
+    console.log("Current balance:", currentBalance);
+    
     if (currentBalance < currentGold) {
         showSuccess(info.lang == "ar" ? "رصيد غير كافٍ!" : "Insufficient balance!");
         return;
     }
 
+    isProcessingClick = true;
+    
     // تحديث الرصيد مؤقتاً
     $('.balanceCount').text((currentBalance - currentGold).toFixed(2));
 
     // إرسال الطلب عبر التطبيق (آمن)
+    console.log("Calling FlamingoApp with game_choice...");
     callFlamingoApp('game_choice', {
         choice: choice,
         gold: currentGold
     }).then(function(res) {
         console.log("Choice response:", res);
+        isProcessingClick = false;
+        
         if (res.code == 200) {
             selectCount += 1;
             if (!selectArr.includes(choice)) {
@@ -229,10 +254,13 @@ function sureClick(choice, index) {
             }
 
             var list = [6, 7, 8, 1, 2, 3, 4, 5];
-            var temp = $(`.item${list[index]} .selected div:nth-child(2) div`)[0].innerHTML;
-            $(`.item${list[index]} .selected div:nth-child(2) div`)[0].innerHTML = 
-                parseInt(temp) + parseInt(currentGold);
-            $(`.item${list[index]} .selected`).show();
+            var itemNum = list[index];
+            var selectedDiv = $(".item" + itemNum + " .selected div:nth-child(2) div");
+            if (selectedDiv.length > 0) {
+                var temp = parseInt(selectedDiv[0].innerHTML) || 0;
+                selectedDiv[0].innerHTML = temp + parseInt(currentGold);
+                $(".item" + itemNum + " .selected").show();
+            }
 
             // تحديث الرصيد
             if (res.balance !== undefined) {
@@ -241,6 +269,8 @@ function sureClick(choice, index) {
             
             // إعلام التطبيق بتحديث الرصيد
             sendToApp({ action: 'refreshBalance' });
+            
+            showSuccess(info.lang == "ar" ? "تم الرهان بنجاح!" : "Bet placed successfully!");
         } else if (res.code == 10062) {
             showSuccess(info.lang == "ar" ? "يرجى الشحن" : "Please recharge");
             // إعادة الرصيد
@@ -251,6 +281,7 @@ function sureClick(choice, index) {
         }
     }).catch(function(error) {
         console.error("Choice error:", error);
+        isProcessingClick = false;
         showSuccess(info.lang == "ar" ? "خطأ في النظام" : "System Error");
         $('.balanceCount').text(currentBalance.toFixed(2));
     });
@@ -264,12 +295,12 @@ function roll(dir) {
     $(".title2").show();
     $(".coutDown")[0].innerHTML = countTime + "s";
     
-    var countTimer = setInterval(function() {
+    var rollCountTimer = setInterval(function() {
         countTime--;
         if (countTime <= 0) {
             countTime = 0;
             status = 0;
-            clearInterval(countTimer);
+            clearInterval(rollCountTimer);
             clearInterval(rollTimer);
             for (var i = 0; i < $(".item .gray").length; i++) {
                 $($(".item .gray")[i]).hide();
@@ -304,9 +335,15 @@ function roll(dir) {
 var hideLock = false;
 
 function bindEvent() {
-    $(".clickArea .clickItem").click(function() {
+    console.log("=== bindEvent called ===");
+    
+    // ربط أحداث النقر على الكوينزات
+    $(".clickArea .clickItem").on('click touchend', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
         for (var i = 0; i < $(".clickItem").length; i++) {
-            $($(".clickItem").removeClass("active"));
+            $($(".clickItem")[i]).removeClass("active");
         }
         $(this).addClass("active");
         currentGold = goldList[$(this).data("index")];
@@ -330,26 +367,92 @@ function bindEvent() {
         console.error("Visibility change error:", e);
     }
 
-    // ربط أحداث النقر على الفواكه
-    for (var i = 0; i < 8; i++) {
-        (function(index) {
-            var itemSelector = ".item" + (index + 1);
+    // ربط أحداث النقر على الفواكه - طريقة محسنة
+    console.log("Binding fruit click events...");
+    
+    // إزالة أي أحداث سابقة
+    $(".item").off('click touchend touchstart');
+    
+    // ربط الأحداث على كل عنصر فاكهة
+    $(".item").each(function(idx) {
+        var $item = $(this);
+        var itemClass = $item.attr('class');
+        var itemNumber = 0;
+        
+        // استخراج رقم العنصر من الكلاس
+        var match = itemClass.match(/item(\d+)/);
+        if (match) {
+            itemNumber = parseInt(match[1]);
+        }
+        
+        // حساب الـ index الصحيح للـ choiceList
+        // item1 -> index 0, item2 -> index 1, etc.
+        var choiceIndex = itemNumber - 1;
+        
+        console.log("Setting up item" + itemNumber + " with choiceIndex:", choiceIndex);
+        
+        // استخدام touchstart للأجهزة المحمولة
+        $item.on('touchstart', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log("Touch on item" + itemNumber);
             
-            // استخدام touchend للأجهزة المحمولة و click للكمبيوتر
-            $(itemSelector).on('touchend click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                if (status === 0) {
-                    var choice = choiceList[index];
-                    console.log("Fruit clicked: " + choice + " at index: " + index);
-                    sureClick(choice, index);
-                } else {
-                    console.log("Cannot click - status is: " + status);
-                }
-            });
-        })(i);
-    }
+            if (status === 0 && !isProcessingClick) {
+                var choice = choiceList[choiceIndex];
+                console.log("Fruit touched - Choice:", choice, "Index:", choiceIndex);
+                sureClick(choice, choiceIndex);
+            } else {
+                console.log("Cannot click - status:", status, "isProcessing:", isProcessingClick);
+            }
+        });
+        
+        // استخدام click للكمبيوتر
+        $item.on('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log("Click on item" + itemNumber);
+            
+            if (status === 0 && !isProcessingClick) {
+                var choice = choiceList[choiceIndex];
+                console.log("Fruit clicked - Choice:", choice, "Index:", choiceIndex);
+                sureClick(choice, choiceIndex);
+            } else {
+                console.log("Cannot click - status:", status, "isProcessing:", isProcessingClick);
+            }
+        });
+    });
+    
+    console.log("Fruit click events bound successfully");
+    
+    // ربط أحداث الأزرار الأخرى
+    $(".records").on('click touchend', function(e) {
+        e.preventDefault();
+        $(".recordsBg").show();
+        getBill();
+    });
+    
+    $(".rule").on('click touchend', function(e) {
+        e.preventDefault();
+        $(".ruleBg").show();
+    });
+    
+    $(".rank").on('click touchend', function(e) {
+        e.preventDefault();
+        $(".rankBg").show();
+        getRank();
+    });
+    
+    $(".modalBack").on('click touchend', function(e) {
+        e.preventDefault();
+        $(".rankBg").hide();
+        $(".recordsBg").hide();
+        $(".rewardBg").hide();
+    });
+    
+    $(".ruleBg .ruleContent img").on('click touchend', function(e) {
+        e.preventDefault();
+        $(".ruleBg").hide();
+    });
 }
 
 /**
@@ -376,14 +479,24 @@ function callFlamingoApp(action, params) {
         console.log("Sending to app:", message);
         
         if (window.FlamingoApp) {
-            window.FlamingoApp.postMessage(message);
+            try {
+                window.FlamingoApp.postMessage(message);
+                console.log("Message sent successfully to FlamingoApp");
+            } catch (e) {
+                console.error("Error sending message to FlamingoApp:", e);
+                delete pendingRequests[requestId];
+                reject('Error sending message: ' + e.message);
+            }
         } else {
+            console.error("FlamingoApp not available!");
+            delete pendingRequests[requestId];
             reject('FlamingoApp not available');
         }
         
         // Timeout بعد 30 ثانية
         setTimeout(function() {
             if (pendingRequests[requestId]) {
+                console.error("Request timeout for:", requestId);
                 delete pendingRequests[requestId];
                 reject('Request timeout');
             }
@@ -394,7 +507,11 @@ function callFlamingoApp(action, params) {
 // إرسال رسالة بسيطة للتطبيق (بدون انتظار رد)
 function sendToApp(data) {
     if (window.FlamingoApp) {
-        window.FlamingoApp.postMessage(JSON.stringify(data));
+        try {
+            window.FlamingoApp.postMessage(JSON.stringify(data));
+        } catch (e) {
+            console.error("Error sending to app:", e);
+        }
     }
 }
 
