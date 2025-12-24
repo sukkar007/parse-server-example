@@ -38,6 +38,61 @@ var requestIdCounter = 0;
 
 console.log("Game initialized");
 
+// إنشاء لوحة تصحيح مرئية داخل الصفحة (لأنك لا تستطيع الوصول إلى Console من التطبيق)
+function ensureDebugOverlay() {
+    if (document.getElementById('flamingo-debug-overlay')) return;
+    var overlay = document.createElement('div');
+    overlay.id = 'flamingo-debug-overlay';
+    overlay.style.position = 'fixed';
+    overlay.style.right = '10px';
+    overlay.style.bottom = '10px';
+    overlay.style.maxWidth = '320px';
+    overlay.style.maxHeight = '40vh';
+    overlay.style.overflow = 'auto';
+    overlay.style.background = 'rgba(0,0,0,0.6)';
+    overlay.style.color = '#fff';
+    overlay.style.fontSize = '12px';
+    overlay.style.padding = '8px';
+    overlay.style.borderRadius = '8px';
+    overlay.style.zIndex = 99999;
+    overlay.style.display = 'none';
+    document.body.appendChild(overlay);
+
+    var btn = document.createElement('button');
+    btn.innerText = 'Logs';
+    btn.style.position = 'fixed';
+    btn.style.right = '10px';
+    btn.style.bottom = '60px';
+    btn.style.zIndex = 99999;
+    btn.style.padding = '6px 8px';
+    btn.style.borderRadius = '6px';
+    btn.style.border = 'none';
+    btn.style.background = '#222';
+    btn.style.color = '#fff';
+    btn.style.cursor = 'pointer';
+    btn.onclick = function() {
+        overlay.style.display = overlay.style.display === 'none' ? 'block' : 'none';
+    };
+    document.body.appendChild(btn);
+}
+
+function addDebugLog(msg) {
+    try {
+        ensureDebugOverlay();
+        var overlay = document.getElementById('flamingo-debug-overlay');
+        if (!overlay) return;
+        var line = document.createElement('div');
+        var time = new Date().toLocaleTimeString();
+        line.innerText = '[' + time + '] ' + msg;
+        overlay.insertBefore(line, overlay.firstChild);
+        // keep overlay visible for quick feedback even if user doesn't open logs
+        overlay.style.display = 'block';
+        setTimeout(function() { if (overlay) overlay.style.display = 'none'; }, 4000);
+    } catch (e) {
+        console.error('addDebugLog error', e);
+    }
+}
+
 // استلام معلومات اللاعب من التطبيق
 window.onFlamingoPlayerInfo = function(playerInfo) {
     info = playerInfo;
@@ -261,6 +316,7 @@ function sureClick(choice, index) {
 
     // إرسال الطلب عبر التطبيق
     console.log("Calling game_choice...");
+    addDebugLog("Calling game_choice: choice=" + choice + ", gold=" + currentGold);
     callFlamingoApp('game_choice', {
         choice: choice,
         gold: currentGold
@@ -444,12 +500,17 @@ function callFlamingoApp(action, params) {
         
         console.log("Message to send:", message);
         console.log("FlamingoApp:", window.FlamingoApp);
-        
+
+        // عرض وارسال سجل التصحيح إلى التطبيق
+        addDebugLog('Sending to app: ' + message);
+        try { sendToApp({ action: 'debug_log', message: message, requestId: requestId }); } catch (e) {}
+
         if (window.FlamingoApp) {
             try {
                 console.log("Sending message to app...");
                 window.FlamingoApp.postMessage(message);
                 console.log("Message sent successfully");
+                addDebugLog('Message sent successfully: ' + action + ' (' + requestId + ')');
             } catch (e) {
                 console.error("Error sending message to app:", e);
                 delete pendingRequests[requestId];
