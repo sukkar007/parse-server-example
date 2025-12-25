@@ -1,6 +1,6 @@
 
 const OneSignal = require('@onesignal/node-onesignal');
-import Parse from 'parse/node';
+import Parse from 'parse/node.js';
 
 // OneSignal config
 const app_id = "7dec5bab-5550-4977-af9d-563e58d64721";
