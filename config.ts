@@ -9,13 +9,13 @@ export const config = {
 
   // مفاتيح التطبيق
   appId: process.env.APP_ID || 'myAppId',
-  masterKey: process.env.MASTER_KEY || '', // يجب إبقاؤه سريًا
+  masterKey: process.env.MASTER_KEY || 'myMasterKey', // يجب إبقاؤه سريًا
   clientKey: process.env.CLIENT_KEY || 'myClientKey',
   restAPIKey: process.env.REST_API_KEY || 'myRestApiKey',
   javascriptKey: process.env.JAVASCRIPT_KEY || 'myJavascriptKey',
 
   // عنوان السيرفر
-  serverURL: process.env.SERVER_URL || 'http://localhost:1337/parse',
+  serverURL: process.env.SERVER_URL || 'https://parse-server-example-o1ht.onrender.com/parse',
 
   // Live Query
   liveQuery: {
