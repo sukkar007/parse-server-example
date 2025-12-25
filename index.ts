@@ -39,24 +39,41 @@ const server = new ParseServer({
   allowClientClassCreation: true,
   allowCustomObjectId: true,
   enforcePrivateUsers: false,
-  // Enable public access to all classes
+  // Enable full public access to all classes - no restrictions
   classLevelPermissions: {
     '*': {
-      'find': {},
-      'count': {},
-      'get': {},
-      'create': {},
-      'update': {},
-      'delete': {},
-      'addField': {}
+      'find': { '*': true },           // جميع المستخدمين يمكنهم البحث
+      'count': { '*': true },          // جميع المستخدمين يمكنهم العد
+      'get': { '*': true },            // جميع المستخدمين يمكنهم الحصول على السجلات
+      'create': { '*': true },         // جميع المستخدمين يمكنهم إنشاء سجلات
+      'update': { '*': true },         // جميع المستخدمين يمكنهم تعديل السجلات
+      'delete': { '*': true },         // جميع المستخدمين يمكنهم حذف السجلات
+      'addField': { '*': true }        // جميع المستخدمين يمكنهم إضافة أعمدة جديدة
     }
-  }
+  },
+  // تعطيل فحص الأمان للسماح بالوصول الكامل
+  revokeSessionOnPasswordChange: false,
+  // السماح بإنشاء أي class بدون قيود
+  allowClientClassCreation: true,
+  // السماح بتعديل schema بدون قيود
+  schemaCacheTTL: 5000,
 });
 server.start().then(() => {
   app.use(mountPath, server.app);
+  
+  // Set public permissions for all new objects
+  Parse.Cloud.beforeSave(async (request) => {
+    const object = request.object;
+    
+    // إعطاء صلاحيات كاملة للجميع
+    const acl = new Parse.ACL();
+    acl.setPublicReadAccess(true);    // قراءة عامة
+    acl.setPublicWriteAccess(true);   // كتابة عامة
+    object.setACL(acl);
+  });
 });
 
-// Parse Dashboard
+// Parse Dashboard - إدارة البيانات عبر الواجهة الرسومية
 const dashboard = new ParseDashboard({
   apps: [
     {
