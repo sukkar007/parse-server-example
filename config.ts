@@ -28,11 +28,10 @@ export const config = {
   enforcePrivateUsers: false,
   revokeSessionOnPasswordChange: false,
 
-  // Live Query لكل الكلاسات
   liveQuery: {
-    classNames: ['*'], // كل الكلاسات مفعلة للـ Live Query
+    classNames: ['Posts', 'Comments', 'Streaming', 'User', 'Installation'], 
   },
-
+  
   schema: {
     definitions: schemaDefinitions,
     lockSchemas: false,
