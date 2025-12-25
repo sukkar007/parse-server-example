@@ -25,6 +25,7 @@ var lastClickTime = 0;
 var CLICK_DELAY = 500;
 var serverStatus = 0; // حالة اللعبة من السيرفر
 var canBet = true; // يمكن وضع الرهان
+var isShowingResult = false; // هل يتم عرض النتيجة الآن؟
 
 // معلومات اللاعب من تطبيق Flamingo
 var info = window.flamingoPlayerInfo || {
@@ -102,8 +103,6 @@ function init() {
     showHand();
     bindEvent();
     getInfo();
-    getBill();
-    getRank();
     
     // بدء التحديث الدوري
     startAutoRefresh();
@@ -135,6 +134,9 @@ function hideHand() {
 }
 
 function showResult(result, topList, winGold, avatar) {
+    // تحديث حالة العرض
+    isShowingResult = true;
+    
     $(".reword").show();
     if (winGold && winGold > 0) {
         $(".prize").show();
@@ -184,6 +186,7 @@ function showResult(result, topList, winGold, avatar) {
             $(".reword").hide();
             $(".prize").hide();
             $(".noPrize").hide();
+            isShowingResult = false;
         }
         $(".reword .reword_content .countDown")[0].innerHTML = resultCount + "s";
     }, 1000);
@@ -215,7 +218,11 @@ function openDraw() {
 function sureClick(choice, index) {
     // التحقق من الوقت المتبقي
     if (countTime <= 3) { // آخر 3 ثواني لا يمكن الرهان
-        showSuccess(info.lang == "ar" ? "انتهت فترة الرهان، انتظر الجولة القادمة" : "Betting period ended");
+        return;
+    }
+
+    // منع النقر أثناء عرض النتيجة
+    if (isShowingResult) {
         return;
     }
 
@@ -227,7 +234,6 @@ function sureClick(choice, index) {
     lastClickTime = now;
     
     if (isRequestInProgress) {
-        showSuccess(info.lang == "ar" ? "جاري المعالجة..." : "Processing...");
         return;
     }
     
@@ -244,7 +250,6 @@ function sureClick(choice, index) {
         }
     }
     if (selectArr.length >= 5 && !isHas) {
-        showSuccess(info.lang == "ar" ? "الحد الأقصى 5 فواكه" : "Max 5 fruits");
         return;
     }
 
@@ -280,19 +285,19 @@ function sureClick(choice, index) {
             
             sendToApp({ action: 'refreshBalance' });
             
-            showSuccess(info.lang == "ar" ? "تم الرهان بنجاح!" : "Bet successful!");
+            // لا تظهر رسالة نجاح
+            
         } else if (res.code == 10062) {
             showSuccess(info.lang == "ar" ? "يرجى الشحن" : "Please recharge");
             $('.balanceCount').text(currentBalance.toFixed(2));
         } else {
-            showSuccess(res.message || 'Error');
+            // فقط إذا كان هناك خطأ حقيقي، لا تظهر رسالة
             $('.balanceCount').text(currentBalance.toFixed(2));
         }
     }).catch(function(error) {
         console.error("Choice error:", error);
         isRequestInProgress = false;
         $(".item").css("pointer-events", "auto");
-        showSuccess(info.lang == "ar" ? "خطأ في النظام" : "System Error");
         $('.balanceCount').text(currentBalance.toFixed(2));
     });
 }
@@ -354,16 +359,19 @@ function bindEvent() {
     });
     
     $(".item").click(function() {
-        console.log("Item clicked, countTime:", countTime, "status:", status);
+        console.log("Item clicked, countTime:", countTime, "isShowingResult:", isShowingResult);
         
         // التحقق من الوقت المتبقي أولاً
         if (countTime <= 3) {
-            showSuccess(info.lang == "ar" ? "انتهت فترة الرهان، انتظر الجولة القادمة" : "Betting period ended");
+            return;
+        }
+        
+        // التحقق من عرض النتيجة
+        if (isShowingResult) {
             return;
         }
         
         if (isRequestInProgress) {
-            console.log("Request in progress");
             return;
         }
         
@@ -382,7 +390,6 @@ function bindEvent() {
             }
         }
         if (selectArr.length >= 5 && !isHas) {
-            showSuccess(info.lang == "ar" ? "الحد الأقصى 5 فواكه" : "Max 5 fruits");
             return;
         }
 
@@ -499,7 +506,7 @@ function callFlamingoApp(action, params) {
                                 profit: 50,
                                 round: round + 1,
                                 countdown: 30, // جولة 30 ثانية
-                                result: choiceList[Math.floor(Math.random() * choiceList.length)],
+                                result: null, // لا تظهر نتيجة أثناء الجولة النشطة
                                 resultList: ["g", "h", "a", "b", "c", "d", "e", "f"],
                                 select: {},
                                 top: [],
@@ -584,8 +591,6 @@ function getInfo(_round, isChoice) {
         console.log("Info response:", res);
         if (res.code === 200 && res.data) {
             if (res.data.countdown && res.data.countdown < 0) {
-                showSuccess(info.lang == "ar" ? "إعادة الاتصال..." : "Reconnecting...");
-                
                 if (countTimer) clearInterval(countTimer);
                 if (handTimer) clearInterval(handTimer);
                 if (rollTimer) clearInterval(rollTimer);
@@ -621,8 +626,9 @@ function getInfo(_round, isChoice) {
             $(".title2").hide();
             $(".title1").show();
 
-            // نتيجة الجولة السابقة
-            if (res.data.result && res.data.result != "") {
+            // نتيجة الجولة السابقة - فقط إذا كنا في جولة جديدة
+            if (_round && res.data.result && res.data.result != "") {
+                // إظهار النتيجة فقط عند طلب نتيجة الجولة السابقة
                 for (var i = 0; i < $(".item").length; i++) {
                     $(".item" + (i + 1)).removeClass("active");
                 }
@@ -632,6 +638,11 @@ function getInfo(_round, isChoice) {
                     "src",
                     "images/gift_" + searchGift(res.data.result) + ".png"
                 );
+            } else if (!_round) {
+                // خلال الجولة الحالية، لا تظهر نتيجة
+                for (var i = 0; i < $(".item").length; i++) {
+                    $(".item" + (i + 1)).removeClass("active");
+                }
             }
 
             // قائمة النتائج
@@ -669,7 +680,7 @@ function getInfo(_round, isChoice) {
                 }
             }
 
-            // عرض النتيجة
+            // عرض النتيجة - فقط عند انتهاء الجولة
             if (_round && res.data.top && res.data.top.length) {
                 showResult(
                     res.data.result,
@@ -677,23 +688,6 @@ function getInfo(_round, isChoice) {
                     res.data.winGold,
                     res.data.avatar
                 );
-            } else if (_round) {
-                if (info.lang == "ar") {
-                    $(".rewordNo .roundWord").html("جولة " + (round - 1) + " النتيجة");
-                } else {
-                    $(".rewordNo .roundWord").html("The result of " + (round - 1) + " round:");
-                }
-                
-                resultTimer = setInterval(function() {
-                    resultCount--;
-                    if (resultCount < 0) {
-                        resultCount = 5;
-                        clearInterval(resultTimer);
-                        $(".rewordNo").hide();
-                    }
-                    $(".rewordNo .reword_content .countDown")[0].innerHTML = resultCount + "s";
-                }, 1000);
-                $(".rewordNo").show();
             }
         }
     }).catch(function(error) {
@@ -765,13 +759,17 @@ function changeWord(win) {
 }
 
 function showSuccess(msg, fn) {
-    $(".pop-success div")[0].innerHTML = msg;
-    $(".pop-success").show();
-    setTimeout(function() {
-        $(".pop-success div")[0].innerHTML = "";
-        if (fn) fn();
-        $(".pop-success").hide();
-    }, 1500);
+    // فقط أظهر الرسالة إذا كانت مهمة (مثل خطأ في الرصيد)
+    if (msg.includes("رصيد") || msg.includes("balance") || 
+        msg.includes("يرجى") || msg.includes("Please")) {
+        $(".pop-success div")[0].innerHTML = msg;
+        $(".pop-success").show();
+        setTimeout(function() {
+            $(".pop-success div")[0].innerHTML = "";
+            if (fn) fn();
+            $(".pop-success").hide();
+        }, 1500);
+    }
 }
 
 function changeLang(defaultLang) {
@@ -810,12 +808,13 @@ function debugInfo() {
     console.log("Countdown time:", countTime);
     console.log("Selected items:", selectArr);
     console.log("Current gold:", currentGold);
+    console.log("Is showing result:", isShowingResult);
 }
 
 function startAutoRefresh() {
     setInterval(function() {
-        // تحديث المعلومات فقط إذا كان الوقت أكثر من 3 ثواني
-        if (countTime > 3) {
+        // تحديث المعلومات فقط إذا لم نكن نعرض نتيجة
+        if (!isShowingResult && countTime > 3) {
             getInfo(round, false);
         }
     }, 5000); // تحديث كل 5 ثواني
