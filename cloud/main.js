@@ -1,3 +1,4 @@
+[file content begin]
 const OneSignal = require('@onesignal/node-onesignal');
 
 // OneSignal config
@@ -62,18 +63,6 @@ Parse.Cloud.define('sendPush', async (request) => {
         console.log("Push Got an error " + error.code + " : " + error.message);
         return Promise.reject(error);
     });
-});
-Parse.Cloud.beforeSave(async (request) => {
-  const object = request.object;
-
-  if (!object.getACL()) {
-    const acl = new Parse.ACL();
-    acl.setPublicReadAccess(true); // الجميع يمكنهم القراءة
-    if (request.user) {
-      acl.setWriteAccess(request.user, true); // المؤلف فقط يمكنه الكتابة
-    }
-    object.setACL(acl);
-  }
 });
 
 //////////////////////////////////////////////////////////
@@ -315,6 +304,90 @@ const FRUIT_MAP = {
 };
 
 //////////////////////////////////////////////////////////
+// جدولة إنشاء نتائج الجولة
+//////////////////////////////////////////////////////////
+async function createRoundResult(roundNumber) {
+  const FerrisWheelResults = Parse.Object.extend("FerrisWheelResults");
+  
+  // التحقق إذا كانت النتيجة موجودة مسبقاً
+  const existingQuery = new Parse.Query(FerrisWheelResults);
+  existingQuery.equalTo("round", roundNumber);
+  const existing = await existingQuery.first({ useMasterKey: true });
+  
+  if (!existing) {
+    // اختيار فاكهة عشوائية
+    const fruitKeys = Object.keys(FRUIT_MAP);
+    const winningNumber = fruitKeys[Math.floor(Math.random() * fruitKeys.length)];
+    const winningFruit = FRUIT_MAP[winningNumber];
+    
+    // تسجيل النتيجة
+    const newResult = new FerrisWheelResults();
+    newResult.set("round", roundNumber);
+    newResult.set("result", winningFruit);
+    newResult.set("createdAt", new Date());
+    await newResult.save(null, { useMasterKey: true });
+    
+    console.log(`Created result for round ${roundNumber}: ${winningFruit}`);
+    
+    return winningFruit;
+  }
+  
+  return existing.get("result");
+}
+
+//////////////////////////////////////////////////////////
+// حساب أرباح الجولة
+//////////////////////////////////////////////////////////
+async function processRoundWinnings(roundNumber, winningFruit) {
+  const FerrisWheelChoices = Parse.Object.extend("FerrisWheelChoices");
+  
+  // جلب جميع الرهانات على الفاكهة الرابحة
+  const winningBetsQuery = new Parse.Query(FerrisWheelChoices);
+  winningBetsQuery.equalTo("round", roundNumber);
+  winningBetsQuery.equalTo("choice", winningFruit);
+  const winningBets = await winningBetsQuery.find({ useMasterKey: true });
+  
+  console.log(`Processing ${winningBets.length} winning bets for round ${roundNumber}, fruit: ${winningFruit}`);
+  
+  const topWinners = [];
+  
+  for (const bet of winningBets) {
+    const userId = bet.get("userId");
+    const betGold = bet.get("gold") || 0;
+    
+    if (betGold > 0) {
+      const winAmount = Math.floor(betGold * FRUIT_MULTIPLIERS[winningFruit]);
+      
+      try {
+        const user = await new Parse.Query(Parse.User).get(userId, { useMasterKey: true });
+        if (user) {
+          user.increment("credit", winAmount);
+          user.increment("gameProfit", winAmount);
+          await user.save(null, { useMasterKey: true });
+          
+          // إضافة للقائمة العليا
+          topWinners.push({
+            userId: userId,
+            avatar: user.get("avatar")?.url() || "",
+            nick: user.get("name") || user.get("username") || "User",
+            total: winAmount,
+          });
+          
+          console.log(`User ${userId} won ${winAmount} credits`);
+        }
+      } catch (error) {
+        console.error(`Error processing win for user ${userId}:`, error);
+      }
+    }
+  }
+  
+  // ترتيب الفائزين حسب المبلغ
+  topWinners.sort((a, b) => b.total - a.total);
+  
+  return topWinners.slice(0, 3); // أعلى 3 فائزين
+}
+
+//////////////////////////////////////////////////////////
 // جلب معلومات اللعبة والجولة الحالية
 //////////////////////////////////////////////////////////
 Parse.Cloud.define("game_info", async (request) => {
@@ -331,66 +404,51 @@ Parse.Cloud.define("game_info", async (request) => {
   const roundStartTime = currentRound * ROUND_DURATION;
   const roundEndTime = roundStartTime + ROUND_DURATION;
   const countdown = Math.max(0, roundEndTime - currentTime);
+  
+  console.log(`Current time: ${currentTime}, Round: ${currentRound}, Countdown: ${countdown}s`);
 
   // جلب بيانات المستخدم
   await user.fetch({ useMasterKey: true });
   const userCredits = user.get("credit") || 0;
   const userProfit = user.get("gameProfit") || 0;
 
-  // التحقق من نتيجة الجولة السابقة
-  const FerrisWheelResults = Parse.Object.extend("FerrisWheelResults");
-  const lastResultQuery = new Parse.Query(FerrisWheelResults);
-  lastResultQuery.equalTo("round", currentRound - 1);
-  let lastResult = await lastResultQuery.first({ useMasterKey: true });
+  // إنشاء نتيجة للجولة السابقة إذا انتهت
+  if (countdown === ROUND_DURATION) {
+    // لقد بدأت جولة جديدة، معالجة الجولة السابقة
+    const previousRound = currentRound - 1;
+    
+    // التحقق من وجود نتيجة الجولة السابقة
+    const FerrisWheelResults = Parse.Object.extend("FerrisWheelResults");
+    const previousResultQuery = new Parse.Query(FerrisWheelResults);
+    previousResultQuery.equalTo("round", previousRound);
+    let previousResult = await previousResultQuery.first({ useMasterKey: true });
+    
+    if (!previousResult) {
+      // إنشاء نتيجة للجولة السابقة
+      const winningFruit = await createRoundResult(previousRound);
+      // معالجة الأرباح
+      await processRoundWinnings(previousRound, winningFruit);
+    }
+  }
 
-  let previousWinningFruit = null;
+  // جلب نتيجة الجولة السابقة
+  const FerrisWheelResults = Parse.Object.extend("FerrisWheelResults");
+  const previousRound = currentRound - 1;
+  const lastResultQuery = new Parse.Query(FerrisWheelResults);
+  lastResultQuery.equalTo("round", previousRound);
+  const lastResult = await lastResultQuery.first({ useMasterKey: true });
+  
+  let previousWinningFruit = lastResult ? lastResult.get("result") : null;
   let topList = [];
 
-  if (!lastResult) {
-    // اختيار الفاكهة الرابحة عشوائياً
-    const fruitKeys = Object.keys(FRUIT_MAP);
-    const winningNumber = fruitKeys[Math.floor(Math.random() * fruitKeys.length)];
-    previousWinningFruit = FRUIT_MAP[winningNumber];
-
-    // تسجيل نتيجة الجولة السابقة
-    const newResult = new FerrisWheelResults();
-    newResult.set("round", currentRound - 1);
-    newResult.set("result", previousWinningFruit);
-    await newResult.save(null, { useMasterKey: true });
-
-    // تحديث أرباح الفائزين
-    const FerrisWheelChoices = Parse.Object.extend("FerrisWheelChoices");
-    const previousBetsQuery = new Parse.Query(FerrisWheelChoices);
-    previousBetsQuery.equalTo("round", currentRound - 1);
-    previousBetsQuery.equalTo("choice", previousWinningFruit);
-    const winningBets = await previousBetsQuery.find({ useMasterKey: true });
-
-    for (const bet of winningBets) {
-      const betUserId = bet.get("userId");
-      const betGold = bet.get("gold") || 0;
-      const winAmount = Math.floor(betGold * FRUIT_MULTIPLIERS[previousWinningFruit]);
-
-      const betUser = await new Parse.Query(Parse.User).get(betUserId, { useMasterKey: true });
-      betUser.increment("credit", winAmount);
-      betUser.increment("gameProfit", winAmount);
-      await betUser.save(null, { useMasterKey: true });
-
-      // إضافة للقائمة العليا
-      topList.push({
-        avatar: betUser.get("avatar")?.url() || "",
-        nick: betUser.get("name") || betUser.get("username"),
-        total: winAmount,
-      });
-    }
-  } else {
-    previousWinningFruit = lastResult.get("result");
-
-    // جلب قائمة الفائزين
+  // جلب قائمة الفائزين من الجولة السابقة
+  if (previousWinningFruit) {
     const FerrisWheelChoices = Parse.Object.extend("FerrisWheelChoices");
     const winningBetsQuery = new Parse.Query(FerrisWheelChoices);
-    winningBetsQuery.equalTo("round", currentRound - 1);
+    winningBetsQuery.equalTo("round", previousRound);
     winningBetsQuery.equalTo("choice", previousWinningFruit);
-    winningBetsQuery.limit(10);
+    winningBetsQuery.descending("gold");
+    winningBetsQuery.limit(3);
     const winningBets = await winningBetsQuery.find({ useMasterKey: true });
 
     for (const bet of winningBets) {
@@ -398,12 +456,16 @@ Parse.Cloud.define("game_info", async (request) => {
       const betGold = bet.get("gold") || 0;
       const winAmount = Math.floor(betGold * FRUIT_MULTIPLIERS[previousWinningFruit]);
 
-      const betUser = await new Parse.Query(Parse.User).get(betUserId, { useMasterKey: true });
-      topList.push({
-        avatar: betUser.get("avatar")?.url() || "",
-        nick: betUser.get("name") || betUser.get("username"),
-        total: winAmount,
-      });
+      try {
+        const betUser = await new Parse.Query(Parse.User).get(betUserId, { useMasterKey: true });
+        topList.push({
+          avatar: betUser.get("avatar")?.url() || "",
+          nick: betUser.get("name") || betUser.get("username") || "User",
+          total: winAmount,
+        });
+      } catch (error) {
+        console.error(`Error fetching user ${betUserId}:`, error);
+      }
     }
   }
 
@@ -412,7 +474,7 @@ Parse.Cloud.define("game_info", async (request) => {
   resultsQuery.descending("round");
   resultsQuery.limit(10);
   const recentResults = await resultsQuery.find({ useMasterKey: true });
-  const resultList = recentResults.map(r => r.get("result"));
+  const resultList = recentResults.map(r => r.get("result")).reverse();
 
   // جلب رهانات المستخدم الحالية
   const FerrisWheelChoices = Parse.Object.extend("FerrisWheelChoices");
@@ -430,14 +492,16 @@ Parse.Cloud.define("game_info", async (request) => {
   let winGold = 0;
   let userAvatar = user.get("avatar")?.url() || "";
   
-  const userWinQuery = new Parse.Query(FerrisWheelChoices);
-  userWinQuery.equalTo("userId", userId);
-  userWinQuery.equalTo("round", currentRound - 1);
-  userWinQuery.equalTo("choice", previousWinningFruit);
-  const userWinBet = await userWinQuery.first({ useMasterKey: true });
-  
-  if (userWinBet) {
-    winGold = Math.floor(userWinBet.get("gold") * FRUIT_MULTIPLIERS[previousWinningFruit]);
+  if (previousWinningFruit) {
+    const userWinQuery = new Parse.Query(FerrisWheelChoices);
+    userWinQuery.equalTo("userId", userId);
+    userWinQuery.equalTo("round", previousRound);
+    userWinQuery.equalTo("choice", previousWinningFruit);
+    const userWinBet = await userWinQuery.first({ useMasterKey: true });
+    
+    if (userWinBet) {
+      winGold = Math.floor(userWinBet.get("gold") * FRUIT_MULTIPLIERS[previousWinningFruit]);
+    }
   }
 
   return {
@@ -451,7 +515,7 @@ Parse.Cloud.define("game_info", async (request) => {
       result: previousWinningFruit,
       resultList: resultList,
       select: selectMap,
-      top: topList.slice(0, 3),
+      top: topList,
       winGold: winGold,
       avatar: userAvatar,
     }
@@ -459,7 +523,7 @@ Parse.Cloud.define("game_info", async (request) => {
 });
 
 //////////////////////////////////////////////////////////
-// وضع رهان في اللعبة
+// وضع رهان في اللعبة (مع منع التكرار)
 //////////////////////////////////////////////////////////
 Parse.Cloud.define("game_choice", async (request) => {
   const user = request.user;
@@ -470,14 +534,27 @@ Parse.Cloud.define("game_choice", async (request) => {
   const { choice, gold } = request.params;
   const userId = user.id;
 
+  console.log(`Bet request from user ${userId}: choice=${choice}, gold=${gold}`);
+
   // التحقق من صحة البيانات
-  if (!choice || gold <= 0) {
-    return { code: 400, message: "Invalid input data" };
+  if (!choice || !FRUIT_MULTIPLIERS[choice]) {
+    return { code: 400, message: "Invalid fruit choice" };
+  }
+  
+  if (!gold || gold <= 0) {
+    return { code: 400, message: "Invalid bet amount" };
   }
 
   // حساب الجولة الحالية
   const currentTime = Math.floor(Date.now() / 1000);
   const currentRound = Math.floor(currentTime / ROUND_DURATION);
+  const roundEndTime = (currentRound * ROUND_DURATION) + ROUND_DURATION;
+  const timeLeft = roundEndTime - currentTime;
+  
+  // منع الرهان إذا بقي أقل من 5 ثواني
+  if (timeLeft < 5) {
+    return { code: 400, message: "Betting period has ended. Please wait for next round." };
+  }
 
   // التحقق من رصيد المستخدم
   await user.fetch({ useMasterKey: true });
@@ -487,22 +564,31 @@ Parse.Cloud.define("game_choice", async (request) => {
     return { code: 10062, message: "Insufficient balance" };
   }
 
+  // التحقق من الحد الأقصى للرهانات (5 فواكه مختلفة)
+  const FerrisWheelChoices = Parse.Object.extend("FerrisWheelChoices");
+  const userBetsQuery = new Parse.Query(FerrisWheelChoices);
+  userBetsQuery.equalTo("userId", userId);
+  userBetsQuery.equalTo("round", currentRound);
+  const existingBets = await userBetsQuery.find({ useMasterKey: true });
+  
+  // التحقق إذا كان المستخدم قد راهن بالفعل على هذه الفاكهة
+  const existingChoiceBet = existingBets.find(bet => bet.get("choice") === choice);
+  
+  // التحقق من عدد الفواكه المختلفة
+  const uniqueChoices = [...new Set(existingBets.map(bet => bet.get("choice")))];
+  if (uniqueChoices.length >= 5 && !existingChoiceBet) {
+    return { code: 400, message: "Maximum 5 different fruits allowed" };
+  }
+
   // خصم الرصيد
   user.increment("credit", -gold);
   await user.save(null, { useMasterKey: true });
 
-  // التحقق من وجود رهان سابق على نفس الفاكهة
-  const FerrisWheelChoices = Parse.Object.extend("FerrisWheelChoices");
-  const existingBetQuery = new Parse.Query(FerrisWheelChoices);
-  existingBetQuery.equalTo("userId", userId);
-  existingBetQuery.equalTo("round", currentRound);
-  existingBetQuery.equalTo("choice", choice);
-  const existingBet = await existingBetQuery.first({ useMasterKey: true });
-
-  if (existingBet) {
+  if (existingChoiceBet) {
     // تحديث الرهان السابق
-    existingBet.increment("gold", gold);
-    await existingBet.save(null, { useMasterKey: true });
+    existingChoiceBet.increment("gold", gold);
+    await existingChoiceBet.save(null, { useMasterKey: true });
+    console.log(`Updated existing bet for user ${userId}, fruit ${choice}, added ${gold}`);
   } else {
     // إضافة رهان جديد
     const newBet = new FerrisWheelChoices();
@@ -511,6 +597,7 @@ Parse.Cloud.define("game_choice", async (request) => {
     newBet.set("choice", choice);
     newBet.set("gold", gold);
     await newBet.save(null, { useMasterKey: true });
+    console.log(`Created new bet for user ${userId}, fruit ${choice}, amount ${gold}`);
   }
 
   // إرجاع الرصيد المحدث
@@ -617,418 +704,74 @@ Parse.Cloud.define("game_validate_player", async (request) => {
   };
 });
 
+//////////////////////////////////////////////////////////
+// وظيفة مجدولة لمعالجة الجولات تلقائياً
+//////////////////////////////////////////////////////////
+Parse.Cloud.job("processGameRounds", async (request) => {
+  const currentTime = Math.floor(Date.now() / 1000);
+  const currentRound = Math.floor(currentTime / ROUND_DURATION);
+  const previousRound = currentRound - 1;
+  
+  console.log(`Processing game rounds: current=${currentRound}, previous=${previousRound}`);
+  
+  // التحقق من معالجة الجولة السابقة
+  const FerrisWheelResults = Parse.Object.extend("FerrisWheelResults");
+  const previousResultQuery = new Parse.Query(FerrisWheelResults);
+  previousResultQuery.equalTo("round", previousRound);
+  const previousResult = await previousResultQuery.first({ useMasterKey: true });
+  
+  if (!previousResult) {
+    // إنشاء نتيجة الجولة السابقة
+    const winningFruit = await createRoundResult(previousRound);
+    
+    // معالجة الأرباح
+    const topWinners = await processRoundWinnings(previousRound, winningFruit);
+    
+    console.log(`Processed round ${previousRound}: winner=${winningFruit}, ${topWinners.length} winners`);
+  } else {
+    console.log(`Round ${previousRound} already processed`);
+  }
+  
+  return { success: true };
+});
 
 //////////////////////////////////////////////////////////
-// =================== TABLE MANAGEMENT ===================
+// جلب الإحصائيات العامة
 //////////////////////////////////////////////////////////
-
-/**
- * Create a new table (Parse Class) with public read/write permissions
- */
-Parse.Cloud.define("createTable", async (request) => {
-  const { className, schema } = request.params;
-
-  if (!className) {
-    throw new Parse.Error(400, "className is required");
+Parse.Cloud.define("game_stats", async (request) => {
+  const user = request.user;
+  if (!user) {
+    throw new Parse.Error(209, "User not authenticated");
   }
-
-  try {
-    const obj = new Parse.Object(className);
-    
-    // Set public permissions
-    const acl = new Parse.ACL();
-    acl.setPublicReadAccess(true);
-    acl.setPublicWriteAccess(true);
-    obj.setACL(acl);
-    
-    // Add schema fields if provided
-    if (schema && typeof schema === 'object') {
-      Object.keys(schema).forEach(key => {
-        obj.set(key, schema[key]);
-      });
+  
+  // جلب عدد المشاركين
+  const FerrisWheelChoices = Parse.Object.extend("FerrisWheelChoices");
+  const participantsQuery = new Parse.Query(FerrisWheelChoices);
+  participantsQuery.distinct("userId");
+  const participantIds = await participantsQuery.find({ useMasterKey: true });
+  
+  // جلب عدد الرهانات
+  const betsQuery = new Parse.Query(FerrisWheelChoices);
+  const totalBets = await betsQuery.count({ useMasterKey: true });
+  
+  // جلب إجمالي الرهانات
+  const aggregateQuery = new Parse.Query(FerrisWheelChoices);
+  aggregateQuery.aggregate({
+    sum: { field: "gold" }
+  });
+  const totalBetAmountResult = await aggregateQuery.find({ useMasterKey: true });
+  const totalBetAmount = totalBetAmountResult[0]?.sum || 0;
+  
+  return {
+    code: 200,
+    message: "Success",
+    data: {
+      totalParticipants: participantIds.length,
+      totalBets: totalBets,
+      totalBetAmount: totalBetAmount,
+      roundDuration: ROUND_DURATION,
+      maxFruits: 5,
     }
-    
-    await obj.save(null, { useMasterKey: true });
-    
-    return {
-      success: true,
-      message: `Table '${className}' created successfully`,
-      className: className
-    };
-  } catch (error) {
-    throw new Parse.Error(400, `Failed to create table: ${error.message}`);
-  }
+  };
 });
-
-/**
- * Read records from a table with optional filters
- */
-Parse.Cloud.define("readTable", async (request) => {
-  const { className, filters, limit } = request.params;
-  
-  if (!className) {
-    throw new Parse.Error(400, "className is required");
-  }
-
-  try {
-    const query = new Parse.Query(className);
-    
-    // Apply filters
-    if (filters && typeof filters === 'object') {
-      Object.keys(filters).forEach(key => {
-        const value = filters[key];
-        if (typeof value === 'object' && value.operator) {
-          // Handle operators like $gt, $lt, $eq, etc.
-          switch (value.operator) {
-            case '$gt':
-              query.greaterThan(key, value.value);
-              break;
-            case '$lt':
-              query.lessThan(key, value.value);
-              break;
-            case '$gte':
-              query.greaterThanOrEqualTo(key, value.value);
-              break;
-            case '$lte':
-              query.lessThanOrEqualTo(key, value.value);
-              break;
-            case '$ne':
-              query.notEqualTo(key, value.value);
-              break;
-            case '$in':
-              query.containedIn(key, value.value);
-              break;
-            default:
-              query.equalTo(key, value);
-          }
-        } else {
-          query.equalTo(key, value);
-        }
-      });
-    }
-    
-    const queryLimit = limit || 100;
-    query.limit(queryLimit);
-    const results = await query.find({ useMasterKey: true });
-    
-    return {
-      success: true,
-      data: results.map(obj => obj.toJSON()),
-      count: results.length
-    };
-  } catch (error) {
-    throw new Parse.Error(400, `Failed to read table: ${error.message}`);
-  }
-});
-
-/**
- * Create a new record in a table
- */
-Parse.Cloud.define("createRecord", async (request) => {
-  const { className, data } = request.params;
-  
-  if (!className) {
-    throw new Parse.Error(400, "className is required");
-  }
-  if (!data || typeof data !== 'object') {
-    throw new Parse.Error(400, "data is required and must be an object");
-  }
-
-  try {
-    const obj = new Parse.Object(className);
-    
-    // Set public permissions
-    const acl = new Parse.ACL();
-    acl.setPublicReadAccess(true);
-    acl.setPublicWriteAccess(true);
-    obj.setACL(acl);
-    
-    // Set data
-    Object.keys(data).forEach(key => {
-      obj.set(key, data[key]);
-    });
-    
-    await obj.save(null, { useMasterKey: true });
-    
-    return {
-      success: true,
-      id: obj.id,
-      data: obj.toJSON()
-    };
-  } catch (error) {
-    throw new Parse.Error(400, `Failed to create record: ${error.message}`);
-  }
-});
-
-/**
- * Update a record in a table
- */
-Parse.Cloud.define("updateRecord", async (request) => {
-  const { className, objectId, data } = request.params;
-  
-  if (!className) {
-    throw new Parse.Error(400, "className is required");
-  }
-  if (!objectId) {
-    throw new Parse.Error(400, "objectId is required");
-  }
-  if (!data || typeof data !== 'object') {
-    throw new Parse.Error(400, "data is required and must be an object");
-  }
-
-  try {
-    const query = new Parse.Query(className);
-    const obj = await query.get(objectId, { useMasterKey: true });
-    
-    if (!obj) {
-      throw new Parse.Error(404, "Record not found");
-    }
-    
-    // Update data
-    Object.keys(data).forEach(key => {
-      obj.set(key, data[key]);
-    });
-    
-    await obj.save(null, { useMasterKey: true });
-    
-    return {
-      success: true,
-      id: obj.id,
-      data: obj.toJSON()
-    };
-  } catch (error) {
-    throw new Parse.Error(400, `Failed to update record: ${error.message}`);
-  }
-});
-
-/**
- * Delete a record from a table
- */
-Parse.Cloud.define("deleteRecord", async (request) => {
-  const { className, objectId } = request.params;
-  
-  if (!className) {
-    throw new Parse.Error(400, "className is required");
-  }
-  if (!objectId) {
-    throw new Parse.Error(400, "objectId is required");
-  }
-
-  try {
-    const query = new Parse.Query(className);
-    const obj = await query.get(objectId, { useMasterKey: true });
-    
-    if (!obj) {
-      throw new Parse.Error(404, "Record not found");
-    }
-    
-    await obj.destroy({ useMasterKey: true });
-    
-    return {
-      success: true,
-      message: `Record '${objectId}' deleted successfully`
-    };
-  } catch (error) {
-    throw new Parse.Error(400, `Failed to delete record: ${error.message}`);
-  }
-});
-
-/**
- * Delete an entire table
- */
-Parse.Cloud.define("deleteTable", async (request) => {
-  const { className } = request.params;
-  
-  if (!className) {
-    throw new Parse.Error(400, "className is required");
-  }
-
-  try {
-    const query = new Parse.Query(className);
-    const results = await query.find({ useMasterKey: true });
-    
-    // Delete all records
-    if (results.length > 0) {
-      await Parse.Object.destroyAll(results, { useMasterKey: true });
-    }
-    
-    return {
-      success: true,
-      message: `Table '${className}' deleted successfully`,
-      recordsDeleted: results.length
-    };
-  } catch (error) {
-    throw new Parse.Error(400, `Failed to delete table: ${error.message}`);
-  }
-});
-
-/**
- * Get table schema/structure
- */
-Parse.Cloud.define("getTableSchema", async (request) => {
-  const { className } = request.params;
-  
-  if (!className) {
-    throw new Parse.Error(400, "className is required");
-  }
-
-  try {
-    const query = new Parse.Query(className);
-    query.limit(1);
-    const results = await query.find({ useMasterKey: true });
-    
-    if (results.length === 0) {
-      return {
-        success: true,
-        className: className,
-        fields: {},
-        recordCount: 0
-      };
-    }
-    
-    const sampleRecord = results[0].toJSON();
-    const fields = {};
-    
-    Object.keys(sampleRecord).forEach(key => {
-      if (!['objectId', 'createdAt', 'updatedAt', 'ACL'].includes(key)) {
-        fields[key] = typeof sampleRecord[key];
-      }
-    });
-    
-    // Get total count
-    const countQuery = new Parse.Query(className);
-    const count = await countQuery.count({ useMasterKey: true });
-    
-    return {
-      success: true,
-      className: className,
-      fields: fields,
-      recordCount: count
-    };
-  } catch (error) {
-    throw new Parse.Error(400, `Failed to get table schema: ${error.message}`);
-  }
-});
-
-/**
- * List all tables (classes) in the database
- */
-Parse.Cloud.define("listTables", async (request) => {
-  try {
-    const query = new Parse.Query('_SCHEMA');
-    const results = await query.find({ useMasterKey: true });
-    
-    const tables = results
-      .map(obj => obj.get('className'))
-      .filter(name => !name.startsWith('_'));
-    
-    return {
-      success: true,
-      tables: tables,
-      count: tables.length
-    };
-  } catch (error) {
-    throw new Parse.Error(400, `Failed to list tables: ${error.message}`);
-  }
-});
-
-/**
- * Batch create records
- */
-Parse.Cloud.define("batchCreateRecords", async (request) => {
-  const { className, records } = request.params;
-  
-  if (!className) {
-    throw new Parse.Error(400, "className is required");
-  }
-  if (!Array.isArray(records)) {
-    throw new Parse.Error(400, "records must be an array");
-  }
-
-  try {
-    const objects = records.map(data => {
-      const obj = new Parse.Object(className);
-      
-      // Set public permissions
-      const acl = new Parse.ACL();
-      acl.setPublicReadAccess(true);
-      acl.setPublicWriteAccess(true);
-      obj.setACL(acl);
-      
-      // Set data
-      Object.keys(data).forEach(key => {
-        obj.set(key, data[key]);
-      });
-      
-      return obj;
-    });
-    
-    await Parse.Object.saveAll(objects, { useMasterKey: true });
-    
-    return {
-      success: true,
-      created: objects.length,
-      data: objects.map(obj => obj.toJSON())
-    };
-  } catch (error) {
-    throw new Parse.Error(400, `Failed to batch create records: ${error.message}`);
-  }
-});
-
-/**
- * Count records in a table
- */
-Parse.Cloud.define("countRecords", async (request) => {
-  const { className, filters } = request.params;
-  
-  if (!className) {
-    throw new Parse.Error(400, "className is required");
-  }
-
-  try {
-    const query = new Parse.Query(className);
-    
-    // Apply filters
-    if (filters && typeof filters === 'object') {
-      Object.keys(filters).forEach(key => {
-        const value = filters[key];
-        if (typeof value === 'object' && value.operator) {
-          switch (value.operator) {
-            case '$gt':
-              query.greaterThan(key, value.value);
-              break;
-            case '$lt':
-              query.lessThan(key, value.value);
-              break;
-            case '$gte':
-              query.greaterThanOrEqualTo(key, value.value);
-              break;
-            case '$lte':
-              query.lessThanOrEqualTo(key, value.value);
-              break;
-            case '$ne':
-              query.notEqualTo(key, value.value);
-              break;
-            case '$in':
-              query.containedIn(key, value.value);
-              break;
-            default:
-              query.equalTo(key, value);
-          }
-        } else {
-          query.equalTo(key, value);
-        }
-      });
-    }
-    
-    const count = await query.count({ useMasterKey: true });
-    
-    return {
-      success: true,
-      className: className,
-      count: count
-    };
-  } catch (error) {
-    throw new Parse.Error(400, `Failed to count records: ${error.message}`);
-  }
-});
+[file content end]
