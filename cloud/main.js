@@ -12,7 +12,16 @@ const configuration = OneSignal.createConfiguration({
   restApiKey: rest_api_key,
 });
 const client = new OneSignal.DefaultApi(configuration);
-
+// أضف هذه الدالة في Backend
+Parse.Cloud.define("get_server_time", async (request) => {
+  return {
+    code: 200,
+    message: "Success",
+    data: {
+      serverTime: Math.floor(Date.now() / 1000)
+    }
+  };
+});
 //////////////////////////////////////////////////////////
 // Send Push Notification
 //////////////////////////////////////////////////////////
