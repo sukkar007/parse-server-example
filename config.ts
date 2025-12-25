@@ -1,3 +1,17 @@
+// config.ts
+// إعدادات Parse Server
+
+// تعريف schemaDefinitions
+const schemaDefinitions = {
+  Posts: {},
+  Comments: {},
+  Streaming: {},
+  User: {},
+  Installation: {},
+  FerrisWheelChoices: {},
+  FerrisWheelResults: {},
+};
+
 export const config = {
   databaseURI:
     process.env.DATABASE_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/dev',
@@ -21,6 +35,21 @@ export const config = {
   },
 
   liveQuery: {
-    classNames: ['Posts', 'Comments', 'Streaming', 'User', 'Installation'], // ضع أسماء الكلاسات الفعلية فقط
+    classNames: [
+      'Posts',
+      'Comments',
+      'Streaming',
+      'User',
+      'Installation',
+      'FerrisWheelChoices',
+      'FerrisWheelResults',
+    ],
   },
+
+  dashboardUsers: [
+    {
+      user: process.env.DASHBOARD_USER || 'admin',
+      pass: process.env.DASHBOARD_PASS || 'admin123',
+    },
+  ],
 };
