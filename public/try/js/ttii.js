@@ -1,425 +1,28 @@
 /**
- * لعبة عجلة الفواكه - الإصدار النهائي 4.0
- * حل كامل لمشكلة حالة اللعبة
+ * لعبة عجلة الفواكه - نسخة آمنة
+ * جميع الطلبات تمر عبر تطبيق Flutter (لا اتصال مباشر بـ Parse)
  */
 
-// ========== إعدادات اللعبة ==========
-var GAME_CONFIG = {
-    TIMER_INTERVAL: 1000,
-    ROLL_INTERVAL: 100,
-    COUNTDOWN_TIME: 10,
-    GOLD_CHIPS: [1, 10, 100, 1000, 10000],
-    FRUITS: ["g", "h", "a", "b", "c", "d", "e", "f"]
-};
+var count = 4;
+var rollCount = 1;
+var countTime = 10;
+var round = 0;
 
-// ========== حالة اللعبة ==========
-var GAME_STATE = {
-    // حالة اللعبة: 'betting' (رهان), 'drawing' (سحب), 'result' (نتيجة), 'waiting' (انتظار)
-    current: 'waiting',
-    
-    // معلومات الجولة
-    round: 0,
-    countdown: 10,
-    
-    // الرهانات
-    selectedChip: 1,
-    currentBets: [],
-    totalBets: 0,
-    
-    // المؤقتات
-    timers: {
-        countdown: null,
-        roll: null,
-        hand: null,
-        result: null
-    },
-    
-    // معلومات اللاعب
-    player: {
-        balance: 0,
-        profit: 0
-    },
-    
-    // التتبع
-    lastAction: null,
-    lastError: null
-};
+var selectCount = 0;
+var selectArr = [];
+var countTimer = null;
+var handTimer = null;
+var rollTimer = null;
+var resultTimer = null;
+var timesWord = [5, 5, 10, 15, 25, 45, 5, 5];
+var goldList = [1, 10, 100, 1000, 10000];
+var resultCount = 5;
+var choiceList = ["g", "h", "a", "b", "c", "d", "e", "f"];
+var status = 0; // 0 يمكن النقر, 1 جاري السحب, 2 تم السحب
+var currentGold = 1;
+var openDrawTimer = null;
 
-// ========== الوظائف الأساسية ==========
-function initGame() {
-    console.log("🎮 تهيئة اللعبة...");
-    
-    // إعادة تعيين الحالة
-    resetGameState();
-    
-    // تهيئة الواجهة
-    setupUI();
-    
-    // ربط الأحداث
-    bindEvents();
-    
-    // تحميل معلومات اللعبة
-    loadGameInfo();
-    
-    console.log("✅ اللعبة جاهزة. الحالة:", GAME_STATE.current);
-}
-
-function resetGameState() {
-    GAME_STATE = {
-        ...GAME_STATE,
-        current: 'waiting',
-        round: 0,
-        countdown: 10,
-        selectedChip: 1,
-        currentBets: [],
-        totalBets: 0,
-        lastAction: 'init',
-        lastError: null
-    };
-    
-    console.log("🔄 تم إعادة تعيين حالة اللعبة");
-}
-
-function setGameState(newState) {
-    const oldState = GAME_STATE.current;
-    GAME_STATE.current = newState;
-    GAME_STATE.lastAction = `state_change:${oldState}->${newState}`;
-    
-    console.log(`🔄 تغيير الحالة: ${oldState} → ${newState}`);
-    updateUIForState();
-}
-
-function canBet() {
-    const canBetNow = GAME_STATE.current === 'betting' && GAME_STATE.countdown > 0;
-    console.log(`🔍 يمكن الرهان؟ ${canBetNow} (الحالة: ${GAME_STATE.current}, الوقت: ${GAME_STATE.countdown})`);
-    return canBetNow;
-}
-
-// ========== إدارة الواجهة ==========
-function setupUI() {
-    // تعيين الرقاقة الأولى كمختارة
-    $('.clickItem').first().addClass('active');
-    
-    // إخفاء عناصر النتيجة
-    $('.reword, .prize, .noPrize').hide();
-    
-    // إظهار عنوان الرهان
-    $('.title1').show();
-    $('.title2').hide();
-    
-    console.log("🎨 تم إعداد الواجهة");
-}
-
-function updateUIForState() {
-    switch(GAME_STATE.current) {
-        case 'betting':
-            $('.title1').show();
-            $('.title2').hide();
-            $('.hand').show();
-            console.log("🎯 واجهة مرحلة الرهان معروضة");
-            break;
-            
-        case 'drawing':
-            $('.title1').hide();
-            $('.title2').show();
-            $('.hand').hide();
-            console.log("🎡 واجهة مرحلة السحب معروضة");
-            break;
-            
-        case 'result':
-            console.log("🏆 واجهة مرحلة النتيجة معروضة");
-            break;
-            
-        case 'waiting':
-            console.log("⏳ واجهة مرحلة الانتظار معروضة");
-            break;
-    }
-}
-
-function updateCountdownDisplay() {
-    $('.coutDown').text(GAME_STATE.countdown + 's');
-    console.log(`⏱️ تحديث العداد: ${GAME_STATE.countdown} ثانية`);
-}
-
-function updateBalanceDisplay() {
-    $('.balanceCount').text(GAME_STATE.player.balance.toFixed(2));
-    $('.profitCount').text(GAME_STATE.player.profit.toFixed(2));
-    $('.round').text((info.lang == "ar" ? "جولة " : "Round ") + GAME_STATE.round);
-}
-
-// ========== إدارة المؤقتات ==========
-function startBettingCountdown() {
-    console.log("⏱️ بدء عد تنازلي الرهان");
-    
-    // تنظيف أي مؤقتات سابقة
-    stopAllTimers();
-    
-    // تعيين حالة الرهان
-    setGameState('betting');
-    
-    // بدء العد التنازلي
-    GAME_STATE.timers.countdown = setInterval(function() {
-        GAME_STATE.countdown--;
-        updateCountdownDisplay();
-        
-        console.log(`⏰ الوقت المتبقي: ${GAME_STATE.countdown} ثانية`);
-        
-        if (GAME_STATE.countdown <= 0) {
-            console.log("⏰ انتهى وقت الرهان، بدء السحب");
-            GAME_STATE.countdown = 0;
-            stopAllTimers();
-            startDrawing();
-        }
-    }, 1000);
-}
-
-function startDrawing() {
-    console.log("🎡 بدء عملية السحب");
-    
-    // تعيين حالة السحب
-    setGameState('drawing');
-    
-    // إخفاء الرهانات السابقة
-    hidePreviousBets();
-    
-    // بدء حركة العجلة
-    startWheelAnimation();
-    
-    // محاكاة السحب لمدة 3 ثوان
-    setTimeout(function() {
-        finishDrawing();
-    }, 3000);
-}
-
-function startWheelAnimation() {
-    console.log("🌀 بدء حركة العجلة");
-    
-    let rollCount = 0;
-    GAME_STATE.timers.roll = setInterval(function() {
-        // تبديل العناصر الرمادية
-        $('.item .gray').show();
-        $('.item' + (rollCount % 8 + 1) + ' .gray').hide();
-        rollCount++;
-    }, 100);
-}
-
-function finishDrawing() {
-    console.log("✅ انتهاء السحب");
-    
-    // إيقاف حركة العجلة
-    if (GAME_STATE.timers.roll) {
-        clearInterval(GAME_STATE.timers.roll);
-        GAME_STATE.timers.roll = null;
-    }
-    
-    // إخفاء جميع العناصر الرمادية
-    $('.item .gray').hide();
-    
-    // الانتقال لمرحلة الرهان الجديدة
-    setTimeout(function() {
-        startNewRound();
-    }, 1000);
-}
-
-function startNewRound() {
-    console.log("🔄 بدء جولة جديدة");
-    
-    // إعادة تعيين الرهانات
-    GAME_STATE.currentBets = [];
-    GAME_STATE.totalBets = 0;
-    
-    // إعادة تعيين العداد
-    GAME_STATE.countdown = GAME_CONFIG.COUNTDOWN_TIME;
-    
-    // تحميل معلومات الجولة الجديدة
-    loadGameInfo();
-    
-    // بدء العد التنازلي الجديد
-    startBettingCountdown();
-}
-
-function stopAllTimers() {
-    console.log("🛑 إيقاف جميع المؤقتات");
-    
-    Object.keys(GAME_STATE.timers).forEach(function(timerKey) {
-        if (GAME_STATE.timers[timerKey]) {
-            clearInterval(GAME_STATE.timers[timerKey]);
-            GAME_STATE.timers[timerKey] = null;
-        }
-    });
-}
-
-// ========== معالجة الرهانات ==========
-function processBet(fruitIndex) {
-    if (!canBet()) {
-        showMessage(info.lang == "ar" ? "لا يمكن الرهان الآن" : "Cannot bet now");
-        return false;
-    }
-    
-    const fruit = GAME_CONFIG.FRUITS[fruitIndex];
-    const betAmount = GAME_STATE.selectedChip;
-    
-    console.log(`🎯 محاولة الرهان: ${fruit} بمبلغ ${betAmount}`);
-    
-    // التحقق من الرصيد
-    if (GAME_STATE.player.balance < betAmount) {
-        showMessage(info.lang == "ar" ? "رصيد غير كافٍ" : "Insufficient balance");
-        return false;
-    }
-    
-    // إرسال الرهان إلى الخادم
-    sendBetToServer(fruit, betAmount, fruitIndex);
-    return true;
-}
-
-function sendBetToServer(fruit, amount, index) {
-    console.log(`📤 إرسال رهان للخادم: ${fruit}, ${amount}`);
-    
-    callFlamingoApp('game_choice', {
-        choice: fruit,
-        gold: amount
-    }).then(function(res) {
-        console.log("✅ استجابة الرهان:", res);
-        
-        if (res.code === 200) {
-            // تحديث الرصيد
-            GAME_STATE.player.balance = parseFloat(res.balance) || (GAME_STATE.player.balance - amount);
-            updateBalanceDisplay();
-            
-            // تحديث الرهان على الواجهة
-            updateBetOnUI(index, amount);
-            
-            // تسجيل الرهان
-            GAME_STATE.currentBets.push({fruit: fruit, amount: amount});
-            GAME_STATE.totalBets += amount;
-            
-            console.log(`💰 رهان ناجح! الرصيد الجديد: ${GAME_STATE.player.balance}`);
-        } else {
-            showMessage(res.message || (info.lang == "ar" ? "خطأ في الرهان" : "Bet error"));
-            console.error("❌ خطأ في الرهان:", res);
-        }
-    }).catch(function(error) {
-        console.error("❌ خطأ في الاتصال:", error);
-        showMessage(info.lang == "ar" ? "خطأ في الاتصال" : "Connection error");
-    });
-}
-
-function updateBetOnUI(index, amount) {
-    const list = [6, 7, 8, 1, 2, 3, 4, 5];
-    const element = $(`.item${list[index]} .selected div:nth-child(2) div`);
-    
-    if (element.length > 0) {
-        const current = parseInt(element.text()) || 0;
-        element.text(current + amount);
-        $(`.item${list[index]} .selected`).show();
-        console.log(`📊 تحديث الرهان على الواجهة: الفهرس ${index}, المبلغ ${amount}`);
-    }
-}
-
-function hidePreviousBets() {
-    $('.item .selected').hide();
-    $('.item .selected div:nth-child(2) div').text('0');
-    console.log("🧹 تم إخفاء الرهانات السابقة");
-}
-
-// ========== الاتصال بالخادم ==========
-function loadGameInfo() {
-    console.log("🔄 تحميل معلومات الجولة");
-    
-    callFlamingoApp('game_info').then(function(res) {
-        console.log("📊 معلومات الجولة:", res);
-        
-        if (res.code === 200 && res.data) {
-            // تحديث معلومات الجولة
-            GAME_STATE.round = res.data.round || GAME_STATE.round + 1;
-            GAME_STATE.countdown = res.data.countdown || GAME_CONFIG.COUNTDOWN_TIME;
-            GAME_STATE.player.balance = parseFloat(res.data.gold) || GAME_STATE.player.balance;
-            GAME_STATE.player.profit = parseFloat(res.data.profit) || 0;
-            
-            // تحديث الواجهة
-            updateBalanceDisplay();
-            updateCountdownDisplay();
-            
-            // إذا كان هناك نتيجة سابقة، عرضها
-            if (res.data.result) {
-                showPreviousResult(res.data.result);
-            }
-            
-            console.log(`✅ معلومات الجولة محملة: الجولة ${GAME_STATE.round}, الوقت ${GAME_STATE.countdown}`);
-        } else {
-            console.error("❌ خطأ في معلومات الجولة:", res);
-            showMessage(info.lang == "ar" ? "خطأ في تحميل المعلومات" : "Error loading info");
-        }
-    }).catch(function(error) {
-        console.error("❌ خطأ في الاتصال:", error);
-        showMessage(info.lang == "ar" ? "خطأ في الاتصال" : "Connection error");
-    });
-}
-
-// ========== إدارة الأحداث ==========
-function bindEvents() {
-    console.log("🔗 ربط أحداث اللعبة");
-    
-    // أحداث الرقاقات
-    $('.clickItem').click(function() {
-        $('.clickItem').removeClass('active');
-        $(this).addClass('active');
-        
-        const index = $(this).data('index');
-        GAME_STATE.selectedChip = GAME_CONFIG.GOLD_CHIPS[index];
-        console.log(`💰 تم اختيار الرقاقة: ${GAME_STATE.selectedChip}`);
-    });
-    
-    // أحداث الفواكه
-    for (let i = 0; i < 8; i++) {
-        $(`.item${i + 1}`).click(function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            console.log(`🍎 نقر على فاكهة ${i} (${GAME_CONFIG.FRUITS[i]})`);
-            console.log(`📊 الحالة الحالية: ${GAME_STATE.current}, الوقت: ${GAME_STATE.countdown}`);
-            
-            if (canBet()) {
-                processBet(i);
-            } else {
-                console.log(`❌ لا يمكن الرهان - الحالة: ${GAME_STATE.current}`);
-                showMessage(info.lang == "ar" ? "انتظر حتى بدء الجولة" : "Wait for round to start");
-            }
-        });
-    }
-    
-    // حدث تغيير الصفحة
-    document.addEventListener("visibilitychange", function() {
-        if (!document.hidden) {
-            console.log("📱 الصفحة ظاهرة، تحديث المعلومات");
-            loadGameInfo();
-        }
-    });
-    
-    console.log("✅ تم ربط جميع الأحداث");
-}
-
-// ========== وظائف مساعدة ==========
-function showMessage(text) {
-    console.log(`💬 عرض رسالة: ${text}`);
-    
-    $('.pop-success div').text(text);
-    $('.pop-success').show();
-    
-    setTimeout(function() {
-        $('.pop-success').hide();
-    }, 2000);
-}
-
-function showPreviousResult(result) {
-    const fruitIndex = GAME_CONFIG.FRUITS.indexOf(result);
-    if (fruitIndex !== -1) {
-        $(`.item${fruitIndex + 1}`).addClass('active');
-        console.log(`🏆 نتيجة سابقة: ${result}`);
-    }
-}
-
-// ========== تكامل Flamingo ==========
+// معلومات اللاعب من تطبيق Flamingo (بدون token للأمان)
 var info = window.flamingoPlayerInfo || {
     uid: '',
     lang: 'en',
@@ -429,110 +32,766 @@ var info = window.flamingoPlayerInfo || {
     diamonds: 0
 };
 
+// تخزين callbacks للطلبات المعلقة
 var pendingRequests = {};
 var requestIdCounter = 0;
 
+console.log("Player Info:", info);
+
+// استلام معلومات اللاعب من التطبيق
 window.onFlamingoPlayerInfo = function(playerInfo) {
     info = playerInfo;
-    console.log("👤 معلومات اللاعب:", info);
-    initGame();
+    console.log("Received player info:", info);
+    init();
 };
 
+// استلام الاستجابات من التطبيق
 window.onFlamingoResponse = function(response) {
-    console.log("📤 استجابة التطبيق:", response);
+    console.log("Received response from app:", response);
     
-    const requestId = response.requestId;
+    var requestId = response.requestId;
     if (requestId && pendingRequests[requestId]) {
-        const callback = pendingRequests[requestId];
+        var callback = pendingRequests[requestId];
         delete pendingRequests[requestId];
         
         if (response.success) {
             callback.resolve(response.data);
         } else {
-            callback.reject(response.error || 'خطأ غير معروف');
+            callback.reject(response.error || 'Unknown error');
         }
     }
 };
 
+var env = (function() {
+    var ua = navigator.userAgent;
+    var testProd = ['127.0.0.1', 'localhost'];
+    var isProd = !testProd.some(function(item) {
+        return window.location.host.indexOf(item) > -1
+    });
+    return {
+        isProd,
+        ios: !!ua.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/),
+        android: ua.indexOf('Android') > -1 || ua.indexOf('Adr') > -1,
+        app: true // دائماً داخل التطبيق
+    };
+})();
+
+$(document).ready(function() {
+    console.log("Document ready");
+    
+    // انتظار معلومات اللاعب من التطبيق
+    if (window.flamingoPlayerInfo) {
+        info = window.flamingoPlayerInfo;
+        init();
+    } else {
+        // انتظار قصير ثم المحاولة
+        setTimeout(function() {
+            if (window.flamingoPlayerInfo) {
+                info = window.flamingoPlayerInfo;
+            }
+            init();
+        }, 500);
+    }
+});
+
+function init() {
+    console.log("Initializing game...");
+    moment.tz.setDefault("Asia/Riyadh");
+    changeLang(info.lang || 'en');
+    showHand();
+    bindEvent();
+    getInfo();
+    getBill();
+    getRank();
+}
+
+function showHand() {
+    count = 4;
+    $(".hand").attr("class", "hand hand3");
+    $(".hand").show();
+    if (handTimer) {
+        clearInterval(handTimer);
+    }
+    handTimer = setInterval(function() {
+        if (count == 1) {
+            $(".hand").removeClass("hand8");
+        } else {
+            $(".hand").removeClass("hand" + (count - 1));
+        }
+        $(".hand").addClass("hand" + count);
+        count++;
+        if (count > 8) {
+            count = 1;
+        }
+    }, 1000);
+}
+
+function hideHand() {
+    $(".hand").hide();
+}
+
+function showResult(result, topList, winGold, avatar) {
+    $(".reword").show();
+    if (winGold && winGold > 0) {
+        $(".prize").show();
+        $(".reword_word>div:first-child>div:last-child")[0].innerHTML = winGold;
+        $(".prize .self img").attr("src", avatar);
+        $(".reword_word>div img:last-child").attr(
+            "src",
+            "images/gift_" + searchGift(result) + ".png"
+        );
+    } else {
+        $(".noPrize").show();
+        $(".noPrize>div img:last-child").attr(
+            "src",
+            "images/gift_" + searchGift(result) + ".png"
+        );
+    }
+    if (info.lang == "ar") {
+        $(".reword .roundWord").html("جولة " + (round - 1) + " النتيجة");
+    } else {
+        $(".reword .roundWord").html("The result of " + (round - 1) + " round:");
+    }
+    var innerHTML = "";
+    for (var i = 0; i < topList.length; i++) {
+        innerHTML +=
+            '<div class="personItem"><div class="logoArea"><div class="logo"><img src="' +
+            topList[i].avatar +
+            '" alt=""></div> <img class="no' +
+            (i + 1) +
+            '" src="images/no' +
+            (i + 1) +
+            '.png" alt=""></div><div class="nick">' +
+            topList[i].nick +
+            '</div><div class="flex ac jc"><img src="images/gold.png" alt=""><div>' +
+            topList[i].total +
+            "</div></div></div>";
+    }
+    for (var i = 0; i < 3 - topList.length; i++) {
+        innerHTML +=
+            '<div class="personItem"><div class="logoArea"><div class="logo"><img src="" alt=""></div></div><div class="nick"></div><div class="flex ac jc"></div></div>';
+    }
+    $(".reword_person").html(innerHTML);
+    resultTimer = setInterval(function() {
+        resultCount--;
+        if (resultCount < 0) {
+            resultCount = 5;
+            clearInterval(resultTimer);
+            $(".reword").hide();
+            $(".prize").hide();
+            $(".noPrize").hide();
+        }
+        $(".reword .reword_content .countDown")[0].innerHTML = resultCount + "s";
+    }, 1000);
+}
+
+function countDown() {
+    if (countTimer) {
+        clearInterval(countTimer);
+    }
+    countTimer = setInterval(function() {
+        countTime--;
+        if (countTime <= 0) {
+            countTime = 0;
+            status = 1;
+            roll();
+            clearInterval(countTimer);
+        }
+        $(".coutDown")[0].innerHTML = countTime + "s";
+    }, 1000);
+}
+
+function openDraw() {
+    getInfo(round);
+}
+
+function sureClick(choice, index) {
+    // التحقق من الرصيد
+    let currentBalance = parseFloat($('.balanceCount').text());
+    if (currentBalance < currentGold) {
+        showSuccess(info.lang == "ar" ? "رصيد غير كافٍ!" : "Insufficient balance!");
+        return;
+    }
+
+    // التحقق من الحد الأقصى للاختيارات
+    var isHas = false;
+    for (var i = 0; i < selectArr.length; i++) {
+        if (selectArr[i] == choice) {
+            isHas = true;
+        }
+    }
+    if (selectArr.length >= 5 && !isHas) {
+        showSuccess(info.lang == "ar" ? "الحد الأقصى للاختيارات 5" : "Max 5 selections");
+        return;
+    }
+
+    // تحديث الرصيد مؤقتاً
+    $('.balanceCount').text((currentBalance - currentGold).toFixed(2));
+
+    // إرسال الطلب عبر التطبيق (آمن)
+    callFlamingoApp('game_choice', {
+        choice: choice,
+        gold: currentGold,
+        round: round
+    }).then(function(res) {
+        console.log("Choice response:", res);
+        if (res.code == 200) {
+            selectCount += 1;
+            if (!selectArr.includes(choice)) {
+                selectArr.push(choice);
+            }
+
+            var list = [6, 7, 8, 1, 2, 3, 4, 5];
+            var temp = $(`.item${list[index]} .selected div:nth-child(2) div`)[0].innerHTML;
+            $(`.item${list[index]} .selected div:nth-child(2) div`)[0].innerHTML = 
+                parseInt(temp || 0) + parseInt(currentGold);
+            $(`.item${list[index]} .selected`).show();
+
+            // تحديث الرصيد من الاستجابة
+            if (res.balance !== undefined) {
+                $('.balanceCount').text(parseFloat(res.balance).toFixed(2));
+            }
+            
+            // تحديث الرصيد في واجهة التطبيق
+            sendToApp({ action: 'refreshBalance' });
+            
+            showSuccess(info.lang == "ar" ? "تم وضع الرهان بنجاح!" : "Bet placed successfully!");
+        } else if (res.code == 10062) {
+            showSuccess(info.lang == "ar" ? "يرجى الشحن" : "Please recharge");
+            // إعادة الرصيد
+            $('.balanceCount').text(currentBalance.toFixed(2));
+        } else {
+            showSuccess(res.message || 'Error');
+            $('.balanceCount').text(currentBalance.toFixed(2));
+        }
+    }).catch(function(error) {
+        console.error("Choice error:", error);
+        showSuccess(info.lang == "ar" ? "خطأ في النظام" : "System Error");
+        $('.balanceCount').text(currentBalance.toFixed(2));
+    });
+}
+
+function roll(dir) {
+    hideHand();
+    selectCount = 0;
+    selectArr = [];
+    $(".title1").hide();
+    $(".title2").show();
+    $(".coutDown")[0].innerHTML = countTime + "s";
+    
+    var countTimer = setInterval(function() {
+        countTime--;
+        if (countTime <= 0) {
+            countTime = 0;
+            status = 0;
+            clearInterval(countTimer);
+            clearInterval(rollTimer);
+            for (var i = 0; i < $(".item .gray").length; i++) {
+                $($(".item .gray")[i]).hide();
+            }
+            openDraw();
+        }
+        $(".coutDown")[0].innerHTML = countTime + "s";
+    }, 1000);
+    
+    for (var i = 0; i < $(".item .gray").length; i++) {
+        $(".item" + (i + 1) + " .selected div:nth-child(2) div")[0].innerHTML = 0;
+        $(".item" + (i + 1) + " .selected").hide();
+        $(".item" + (i + 1)).removeClass("active");
+        $($(".item .gray")[i]).show();
+    }
+    $($(".item .gray")[rollCount]).hide();
+    
+    rollTimer = setInterval(function() {
+        for (var i = 0; i < $(".item .gray").length; i++) {
+            $($(".item .gray")[i]).show();
+        }
+        rollCount++;
+        if (rollCount > 7) {
+            rollCount = 0;
+        }
+        $($(".item .gray")[rollCount]).hide();
+    }, 100);
+    
+    countTime = 10;
+}
+
+var hideLock = false;
+
+function bindEvent() {
+    // حدث النقر على اختيار المبلغ الذهبي
+    $(".clickArea .clickItem").click(function() {
+        for (var i = 0; i < $(".clickItem").length; i++) {
+            $($(".clickItem")[i]).removeClass("active");
+        }
+        $(this).addClass("active");
+        currentGold = goldList[$(this).data("index")];
+        console.log("Selected gold:", currentGold);
+    });
+    
+    // حدث النقر على الفواكه (العناصر)
+    $(".item").click(function() {
+        console.log("Item clicked, status:", status, "data-index:", $(this).data("index"));
+        
+        if (status == 0) {
+            // إزالة النشاط من جميع العناصر أولاً
+            for (var i = 0; i < $(".item").length; i++) {
+                $(".item" + (i + 1)).removeClass("active");
+            }
+            
+            // الحصول على العنصر المحدد
+            var itemIndex = $(this).data("index");
+            console.log("Selected item index:", itemIndex);
+            
+            // التحقق من الحد الأقصى للاختيارات
+            var isHas = false;
+            for (var i = 0; i < selectArr.length; i++) {
+                if (selectArr[i] == choiceList[itemIndex]) {
+                    isHas = true;
+                }
+            }
+            if (selectArr.length >= 5 && !isHas) {
+                showSuccess(info.lang == "ar" ? "الحد الأقصى للاختيارات 5" : "Max 5 selections");
+                return;
+            }
+
+            // استدعاء دالة النقر
+            sureClick(choiceList[itemIndex], itemIndex);
+        } else {
+            console.log("Cannot click now, status:", status);
+        }
+    });
+    
+    // أحداث الأزرار الأخرى
+    $(".records").click(function() {
+        getBill();
+        $(".recordsBg").show();
+    });
+    
+    $(".recordsBg .modalBack").click(function() {
+        $(".recordsBg").hide();
+    });
+
+    $(".rule").click(function() {
+        $(".ruleBg").show();
+    });
+    
+    $(".ruleBg").click(function() {
+        $(".ruleBg").hide();
+    });
+
+    $(".rank").click(function() {
+        getRank();
+        $(".rankBg").show();
+    });
+    
+    $(".rankBg .modalBack").click(function() {
+        $(".rankBg").hide();
+    });
+    
+    $(".reword").click(function(e) {
+        e.stopPropagation();
+    });
+
+    $(".rewardBg .modalBack").click(function() {
+        $(".rewardBg").hide();
+    });
+
+    $(".rewordNo").click(function(e) {
+        e.stopPropagation();
+    });
+    
+    $(".pop-success").click(function(e) {
+        e.stopPropagation();
+    });
+    
+    // إضافة زر إغلاق
+    $(".close-btn").click(function() {
+        closeGame();
+    });
+    
+    // حدث تغيير حالة الصفحة
+    try {
+        document.addEventListener("visibilitychange", function() {
+            if (document.hidden) {
+                hideLock = true;
+                sessionStorage.setItem("currentRound", round);
+                if (countTimer) clearInterval(countTimer);
+            } else {
+                if (hideLock) {
+                    hideLock = false;
+                    getInfo();
+                }
+            }
+        });
+    } catch (e) {
+        console.error("Visibility change error:", e);
+    }
+}
+
+/**
+ * دالة آمنة للاتصال بـ Parse عبر التطبيق
+ * بدلاً من الاتصال المباشر بـ Parse Server
+ */
 function callFlamingoApp(action, params) {
     return new Promise(function(resolve, reject) {
-        const requestId = 'req_' + (++requestIdCounter) + '_' + Date.now();
+        var requestId = 'req_' + (++requestIdCounter) + '_' + Date.now();
         
+        // تخزين callback
         pendingRequests[requestId] = {
             resolve: resolve,
             reject: reject
         };
         
-        const message = JSON.stringify({
+        // إرسال الطلب للتطبيق
+        var message = {
             action: action,
             requestId: requestId,
             params: params || {}
-        });
+        };
         
-        console.log(`📤 إرسال ${action}`, params);
+        console.log("Sending to app:", action, message);
         
+        // طريقة 1: استخدام FlamingoApp إذا كان موجوداً
         if (window.FlamingoApp) {
-            window.FlamingoApp.postMessage(message);
-        } else {
-            reject('FlamingoApp غير متوفر');
+            window.FlamingoApp.postMessage(JSON.stringify(message));
+        } 
+        // طريقة 2: استخدام window.webkit إذا كان في iOS
+        else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.FlamingoApp) {
+            window.webkit.messageHandlers.FlamingoApp.postMessage(message);
+        }
+        // طريقة 3: استخدام prompt للتواصل مع التطبيق (طريقة قديمة)
+        else if (window.prompt) {
+            prompt(JSON.stringify(message));
+        }
+        // طريقة 4: استخدام console.log للتصحيح
+        else {
+            console.log("App message:", message);
+            // محاكاة الاستجابة للاختبار
+            setTimeout(function() {
+                if (action === 'game_choice') {
+                    resolve({
+                        code: 200,
+                        balance: parseFloat($('.balanceCount').text()) - currentGold,
+                        message: "Success"
+                    });
+                } else if (action === 'game_info') {
+                    resolve({
+                        code: 200,
+                        data: {
+                            gold: 1000,
+                            profit: 50,
+                            round: round + 1,
+                            countdown: 10,
+                            result: choiceList[Math.floor(Math.random() * choiceList.length)],
+                            resultList: ["g", "h", "a", "b", "c", "d", "e", "f"],
+                            select: {},
+                            top: [],
+                            winGold: 0,
+                            avatar: info.avatar || "images/user_avatar.png"
+                        }
+                    });
+                }
+            }, 500);
         }
         
+        // Timeout بعد 30 ثانية
         setTimeout(function() {
             if (pendingRequests[requestId]) {
                 delete pendingRequests[requestId];
-                reject('انتهت مهلة الطلب');
+                reject('Request timeout');
             }
         }, 30000);
     });
 }
 
-// ========== بدء اللعبة ==========
-$(document).ready(function() {
-    console.log("✅ المستند جاهز");
-    
-    if (window.flamingoPlayerInfo) {
-        info = window.flamingoPlayerInfo;
-        initGame();
-    } else {
-        setTimeout(function() {
-            if (window.flamingoPlayerInfo) {
-                info = window.flamingoPlayerInfo;
-                initGame();
-            } else {
-                console.log("⚠️ لم يتم تحميل معلومات اللاعب، استخدام الإعدادات الافتراضية");
-                initGame();
+// إرسال رسالة بسيطة للتطبيق (بدون انتظار رد)
+function sendToApp(data) {
+    if (window.FlamingoApp) {
+        window.FlamingoApp.postMessage(JSON.stringify(data));
+    } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.FlamingoApp) {
+        window.webkit.messageHandlers.FlamingoApp.postMessage(data);
+    }
+}
+
+function getRank() {
+    callFlamingoApp('game_rank').then(function(res) {
+        console.log("Rank response:", res);
+        if (res.code == 200 && res.data) {
+            var innerHTML = "";
+            var topHTML = "";
+            
+            for (var i = 0; i < res.data.length; i++) {
+                var item = res.data[i];
+                if (i < 3) {
+                    topHTML +=
+                        '<div class="personItem"><div class="logoArea"><div class="logo"><img src="' +
+                        item.avatar +
+                        '" alt=""></div> <img class="no' +
+                        (i + 1) +
+                        '" src="images/no' +
+                        (i + 1) +
+                        '.png" alt=""></div><div class="nick">' +
+                        item.nick +
+                        '</div><div class="flex ac jc"><img src="images/gold.png" alt=""><div>' +
+                        item.total +
+                        "</div></div></div>";
+                } else {
+                    innerHTML +=
+                        '<div class="rank-list-item flex ac js"><div class="inner-item">' +
+                        (i + 1) +
+                        '</div><div class="inner-item"><div class="logo"><img src="' +
+                        item.avatar +
+                        '" alt=""></div></div><div class="inner-item">' +
+                        item.nick +
+                        '</div><div class="inner-item"><img src="images/gold.png" alt=""><div>' +
+                        item.total +
+                        "</div></div></div>";
+                }
             }
-        }, 500);
-    }
-});
+            $(".topThree").html(topHTML);
+            $(".topList").html(innerHTML);
+        }
+    }).catch(function(error) {
+        console.error("Rank error:", error);
+    });
+}
 
-// ========== أداة التصحيح ==========
-window.debugGame = {
-    getState: function() {
-        return {
-            ...GAME_STATE,
-            canBet: canBet(),
-            time: new Date().toLocaleTimeString()
-        };
-    },
+function getInfo(_round, isChoice) {
+    console.log("Getting game info...");
     
-    forceBetting: function() {
-        setGameState('betting');
-        GAME_STATE.countdown = 10;
-        updateCountdownDisplay();
-        console.log("🔓 تم إجبار وضع الرهان");
-        showMessage("وضع الرهان مفعل");
-    },
-    
-    resetRound: function() {
-        startNewRound();
-        console.log("🔄 إعادة تعيين الجولة");
-    },
-    
-    logState: function() {
-        console.log("=== 🔍 حالة اللعبة ===", this.getState());
+    var params = {};
+    if (_round) {
+        params.round = _round;
     }
-};
+    
+    callFlamingoApp('game_info', params).then(function(res) {
+        console.log("Info response:", res);
+        if (res.code === 200 && res.data) {
+            if (res.data.countdown && res.data.countdown < 0) {
+                showSuccess(info.lang == "ar" ? "خطأ في النظام، جاري إعادة الاتصال..." : "System Error, reconnecting...");
+                
+                if (countTimer) clearInterval(countTimer);
+                if (handTimer) clearInterval(handTimer);
+                if (rollTimer) clearInterval(rollTimer);
+                if (resultTimer) clearInterval(resultTimer);
+                
+                setTimeout(function() {
+                    getInfo();
+                    showHand();
+                }, 800);
+                return;
+            }
 
-console.log("🎉 تم تحميل نظام اللعبة بنجاح!");
-console.log("💡 استخدم debugGame.logState() لرؤية الحالة الحالية");
+            $(".balanceCount")[0].innerHTML = parseFloat(res.data.gold).toFixed(2);
+            $(".profitCount")[0].innerHTML = res.data.profit || 0;
+            $(".round")[0].innerHTML = (info.lang == "ar" ? "جولة " : "Round ") + res.data.round;
+
+            if (status == 1 && isChoice) return;
+            round = res.data.round;
+
+            if (!isChoice) {
+                countTime = res.data.countdown;
+                $(".coutDown")[0].innerHTML = countTime + "s";
+                
+                if (countTimer) clearInterval(countTimer);
+                countDown();
+            }
+
+            $(".title2").hide();
+            $(".title1").show();
+
+            // نتيجة الجولة السابقة
+            if (res.data.result && res.data.result != "") {
+                $(".item" + searchGift(res.data.result)).addClass("active");
+                $(".noPrize1>div img:last-child").attr(
+                    "src",
+                    "images/gift_" + searchGift(res.data.result) + ".png"
+                );
+            }
+
+            // قائمة النتائج
+            var giftListHtml = "";
+            var resultList = (res.data.resultList || []).reverse();
+            for (var i = 0; i < resultList.length; i++) {
+                var _index = searchGift(resultList[i]);
+                if (i == 0) {
+                    giftListHtml +=
+                        '<div class="giftItem"><img src="images/gift_' +
+                        _index +
+                        '.png" alt=""><img src="images/new.png" alt=""></div>';
+                } else {
+                    giftListHtml +=
+                        '<div class="giftItem"><img src="images/gift_' +
+                        _index +
+                        '.png" alt=""></div>';
+                }
+            }
+            $(".giftList").html(giftListHtml);
+
+            if (_round) {
+                clearInterval(handTimer);
+                showHand();
+            }
+
+            // عرض الرهانات الحالية
+            if (res.data.select && Object.keys(res.data.select).length) {
+                var ak = Object.keys(res.data.select);
+                var vk = Object.values(res.data.select);
+                for (var i = 0; i < ak.length; i++) {
+                    $(".item" + searchGift(ak[i]) + " .selected div:nth-child(2) div")[0].innerHTML = vk[i];
+                    $(".item" + searchGift(ak[i]) + " .selected").show();
+                }
+            } else {
+                for (var i = 0; i < $(".item .gray").length; i++) {
+                    $(".item" + (i + 1) + " .selected div:nth-child(2) div")[0].innerHTML = 0;
+                    $(".item" + (i + 1) + " .selected").hide();
+                }
+            }
+
+            // عرض النتيجة
+            if (_round && res.data.top && res.data.top.length) {
+                showResult(
+                    res.data.result,
+                    res.data.top,
+                    res.data.winGold,
+                    res.data.avatar
+                );
+            } else if (_round) {
+                if (info.lang == "ar") {
+                    $(".rewordNo .roundWord").html("جولة " + (round - 1) + " النتيجة");
+                } else {
+                    $(".rewordNo .roundWord").html("The result of " + (round - 1) + " round:");
+                }
+                
+                resultTimer = setInterval(function() {
+                    resultCount--;
+                    if (resultCount < 0) {
+                        resultCount = 5;
+                        clearInterval(resultTimer);
+                        $(".rewordNo").hide();
+                    }
+                    $(".rewordNo .reword_content .countDown")[0].innerHTML = resultCount + "s";
+                }, 1000);
+                $(".rewordNo").show();
+            }
+        }
+    }).catch(function(error) {
+        console.error("Info error:", error);
+    });
+}
+
+function searchGift(value) {
+    var temp = 0;
+    for (var i = 0; i < choiceList.length; i++) {
+        if (value == choiceList[i]) {
+            temp = i;
+            break;
+        }
+    }
+    var list = [6, 7, 8, 1, 2, 3, 4, 5];
+    return list[temp];
+}
+
+function getBill() {
+    callFlamingoApp('game_bill').then(function(res) {
+        console.log("Bill response:", res);
+        if (res.code == 200 && res.data) {
+            var innerHTML = "";
+            var list = [6, 7, 8, 1, 2, 3, 4, 5];
+            
+            for (var i = 0; i < res.data.length; i++) {
+                var tempItem = res.data[i];
+                var isWin = tempItem.choice == tempItem.result;
+                innerHTML +=
+                    '<div class="records-list-item flex ac js"><div class="inner-item">' +
+                    tempItem.gold +
+                    ' gold</div><div class="inner-item"> <img src="images/gift_' +
+                    searchGift(tempItem.choice) +
+                    '.png" alt=""> </div><div class="inner-item"><img src="images/gift_' +
+                    (tempItem.result ? searchGift(tempItem.result) : '1') +
+                    '.png" alt=""></div><div class="inner-item"><div>' +
+                    changeWord(isWin) +
+                    "</div>" +
+                    (isWin ?
+                        "<div>(" +
+                        timesWord[searchGift(tempItem.result) - 1] +
+                        changeTimesWord() +
+                        ")</div>" :
+                        "") +
+                    '</div><div class="inner-item"><div>' +
+                    moment(tempItem.createTime).format("YYYY/MM/DD") +
+                    "</div><div>" +
+                    moment(tempItem.createTime).format("HH:mm:ss") +
+                    "</div></div></div>";
+            }
+            $(".records-list").html(innerHTML);
+        }
+    }).catch(function(error) {
+        console.error("Bill error:", error);
+    });
+}
+
+function changeTimesWord() {
+    return info.lang == "ar" ? " مرات" : " times";
+}
+
+function changeWord(win) {
+    if (info.lang == "ar") {
+        return win ? "نعم" : "لا";
+    } else {
+        return win ? "Yes" : "No";
+    }
+}
+
+function showSuccess(msg, fn) {
+    $(".pop-success div")[0].innerHTML = msg;
+    $(".pop-success").show();
+    setTimeout(function() {
+        $(".pop-success div")[0].innerHTML = "";
+        if (fn) fn();
+        $(".pop-success").hide();
+    }, 1500);
+}
+
+function changeLang(defaultLang) {
+    if ('en,ar,in,yn'.indexOf(defaultLang) === -1 || !defaultLang) {
+        defaultLang = 'en';
+    }
+
+    function languageSelect(defaultLang) {
+        $("[i18n]").i18n({
+            defaultLang: defaultLang,
+            filePath: "js/i18n/",
+            filePrefix: "i18n_",
+            fileSuffix: "",
+            forever: true,
+            callback: function(res) {},
+        });
+    }
+    
+    if (info.lang == "ar") {
+        $(".records").attr("src", "images/btn_records@2x.png");
+        $(".rule").attr("src", "images/btn_rule@2x.png");
+        $(".rank").attr("src", "images/btn_rank@2x.png");
+    }
+
+    languageSelect(defaultLang);
+}
+
+// دالة لإغلاق اللعبة
+function closeGame() {
+    sendToApp({ action: 'close' });
+}
+
+// دالة للمساعدة في التصحيح
+function debugInfo() {
+    console.log("Current game state:");
+    console.log("Status:", status);
+    console.log("Round:", round);
+    console.log("Current gold:", currentGold);
+    console.log("Selected items:", selectArr);
+    console.log("Selected count:", selectCount);
+    console.log("Countdown time:", countTime);
+    console.log("Player info:", info);
+}
