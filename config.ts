@@ -1,43 +1,29 @@
-// config.js
+import { schemaDefinitions } from './cloud/schema.js';
+
 export const config = {
-  // قاعدة البيانات
   databaseURI:
     process.env.DATABASE_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/dev',
-
-  // Cloud Code
   cloud: './cloud/main.js',
-
-  // مفاتيح التطبيق
   appId: process.env.APP_ID || 'myAppId',
-  masterKey: process.env.MASTER_KEY || 'myMasterKey', // يجب إبقاؤه سريًا
+  masterKey: process.env.MASTER_KEY || '', //Add your master key here. Keep it secret!
   clientKey: process.env.CLIENT_KEY || 'myClientKey',
   restAPIKey: process.env.REST_API_KEY || 'myRestApiKey',
   javascriptKey: process.env.JAVASCRIPT_KEY || 'myJavascriptKey',
-
-  // عنوان السيرفر
-  serverURL: process.env.SERVER_URL || 'https://parse-server-example-o1ht.onrender.com/parse',
-
-  // Live Query
+  serverURL: process.env.SERVER_URL || 'http://localhost:1337/parse', // Don't forget to change to https if needed
   liveQuery: {
-    classNames: ['Posts', 'Comments', 'Streaming', 'User', 'Installation'], 
-    // يمكنك إضافة أي كلاس آخر تريد دعم Live Query له
-    // ⚠️ لا تستخدم '*' لأنه يسبب SyntaxError
+    classNames: ['Posts', 'Comments', 'Streaming', 'User', 'Installation'], // List of classes to support for query subscriptions
   },
-
-  // ⚠️ ملاحظة: clientClassCreation و dashboardUsers لا توضع هنا
-  // لتفعيل إنشاء أي Class تلقائي، استخدم allowClientClassCreation عند إنشاء ParseServer
-
-  // صلاحيات عامة للجميع
-  // السماح للجميع بإنشاء وقراءة وتعديل وحذف الجداول
-  publicPermissions: {
-    create: true,
-    read: true,
-    update: true,
-    delete: true
+  schema: {
+    definitions: schemaDefinitions,
+    lockSchemas: false,
+    strict: false,
+    recreateModifiedFields: false,
+    deleteExtraFields: false,
   },
-
-  // إعدادات الأمان
-  enforcePrivateUsers: false,
-  allowClientClassCreation: true,
-  allowCustomObjectId: true,
+ dashboardUsers: [
+    {
+      user: process.env.DASHBOARD_USER || 'admin',
+      pass: process.env.DASHBOARD_PASS || 'admin123',
+    },
+  ],
 };
