@@ -1,14 +1,14 @@
-import express from 'express';
-import { ParseServer } from 'parse-server';
-import ParseDashboard from 'parse-dashboard';
-import path from 'path';
-import http from 'http';
-import { config } from './config.js';
+const express = require('express');
+const { ParseServer } = require('parse-server');
+const ParseDashboard = require('parse-dashboard');
+const path = require('path');
+const http = require('http');
+const { config } = require('./config.js');
 
 const __dirname = path.resolve();
 const app = express();
 
-// Enable CORS for all origins
+// Enable CORS
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
@@ -19,17 +19,18 @@ app.use((req, res, next) => {
   next();
 });
 
-// Serve static assets from the /public folder
+// Serve static files
 app.use('/public', express.static(path.join(__dirname, '/public')));
 
 // Parse Server
 const mountPath = process.env.PARSE_MOUNT || '/parse';
 const server = new ParseServer({
   ...config,
-  allowClientClassCreation: true, // ✅ إنشاء أي Class تلقائي
+  allowClientClassCreation: true,
 });
-await server.start();
-app.use(mountPath, server.app);
+server.start().then(() => {
+  app.use(mountPath, server.app);
+});
 
 // Parse Dashboard
 const dashboard = new ParseDashboard({
@@ -64,7 +65,7 @@ app.get('/test', (req, res) => {
   res.sendFile(path.join(__dirname, '/public/test.html'));
 });
 
-// Start server
+// Start HTTP server
 const port = process.env.PORT || 1337;
 const httpServer = http.createServer(app);
 httpServer.listen(port, () => {
@@ -72,6 +73,4 @@ httpServer.listen(port, () => {
 });
 
 // Live Query
-await ParseServer.createLiveQueryServer(httpServer);
-console.log(`Visit http://localhost:${port}/test to check the Parse Server`);
-console.log(`Visit http://localhost:${port}/dashboard to access Parse Dashboard`);
+ParseServer.createLiveQueryServer(httpServer);
