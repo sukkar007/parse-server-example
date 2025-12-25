@@ -1,4 +1,4 @@
-[file content begin]
+
 const OneSignal = require('@onesignal/node-onesignal');
 import Parse from 'parse/node';
 
@@ -809,4 +809,4 @@ Parse.Cloud.define("game_stats", async (request) => {
     }
   };
 });
-[file content end]
+
