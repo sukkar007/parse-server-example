@@ -1,10 +1,11 @@
+
 /**
  * لعبة عجلة الفواكه - نسخة آمنة
  * جميع الطلبات تمر عبر تطبيق Flutter (لا اتصال مباشر بـ Parse)
  */
 
 var count = 4;
-var rollCount = 0; // تم التصحيح من 1 إلى 0
+var rollCount = 0;
 var countTime = 10;
 var round = 0;
 
@@ -20,7 +21,6 @@ var resultCount = 5;
 var choiceList = ["g", "h", "a", "b", "c", "d", "e", "f"];
 var status = 0; // 0 يمكن النقر, 1 جاري السحب, 2 تم السحب
 var currentGold = 1;
-var openDrawTimer = null;
 
 // متغيرات جديدة لإدارة الحالة
 var gameState = {
@@ -236,8 +236,10 @@ function showResult(result, topList, winGold, avatar) {
             status = 0;
             
             // بدء جولة جديدة بعد إغلاق نافذة النتيجة
-            showHand();
-            getInfo();
+            setTimeout(function() {
+                showHand();
+                getInfo();
+            }, 500);
         }
         $(".reword .reword_content .countDown")[0].innerHTML = resultCount + "s";
         $(".noPrize .reword_content .countDown")[0].innerHTML = resultCount + "s";
@@ -284,12 +286,12 @@ function openDraw() {
 
 function sureClick(choice, index) {
     // منع النقرات المتعددة أثناء المعالجة
-    if (isProcessingClick || !gameState.canSelect) {
-        console.log("Click ignored - processing previous request or selection disabled");
+    if (isProcessingClick) {
+        console.log("Click ignored - processing previous request");
         return;
     }
     
-    // التحقق من حالة السحب
+    // التحقق من حالة السحب فقط (عدم استخدام gameState.canSelect هنا)
     if (status !== 0 || gameState.isRolling || gameState.isResultShowing) {
         showSuccess(info.lang == "ar" ? "غير مسموح بالتحديد الآن" : "Selection not allowed now");
         return;
@@ -473,12 +475,15 @@ function bindEvent() {
         e.stopPropagation();
     });
 
-    // ربط أحداث النقر على الفواكه
+    // ربط أحداث النقر على الفواكه - التصحيح هنا
     $(".item").click(function() {
         var index = $(this).data("index");
-        console.log("Clicked item index:", index);
+        console.log("Clicked item index:", index, "status:", status, "isProcessingClick:", isProcessingClick);
         
-        if (status == 0 && !isProcessingClick && gameState.canSelect) {
+        // التصحيح: استخدام status فقط للتحقق، بدون gameState.canSelect
+        if (status == 0 && !isProcessingClick) {
+            console.log("Selection allowed, processing...");
+            
             // إزالة التفعيل من جميع العناصر
             for (var i = 1; i <= 8; i++) {
                 $(".item" + i).removeClass("active");
@@ -501,6 +506,13 @@ function bindEvent() {
             }
 
             sureClick(choiceList[index], index);
+        } else {
+            console.log("Selection not allowed:", {
+                status: status,
+                isProcessingClick: isProcessingClick,
+                isRolling: gameState.isRolling,
+                isResultShowing: gameState.isResultShowing
+            });
         }
     });
     
@@ -645,7 +657,7 @@ function getInfo(_round, isSilent) {
     }
     
     callFlamingoApp('game_info', params).then(function(res) {
-        console.log("Info response:", res);
+        console.log("Info response:", res, "current status:", status);
         if (res.code === 200 && res.data) {
             // تحديث حالة اللعبة من السيرفر
             gameState.serverCountdown = res.data.countdown || 0;
@@ -666,36 +678,35 @@ function getInfo(_round, isSilent) {
             }
             
             $(".profitCount")[0].innerHTML = res.data.profit || 0;
-            $(".round")[0].innerHTML = (info.lang == "ar" ? "جولة " : "Round ") + res.data.round;
-
+            
             // تحديث رقم الجولة
             var previousRound = round;
             round = res.data.round || 0;
+            $(".round")[0].innerHTML = (info.lang == "ar" ? "جولة " : "Round ") + round;
 
             // تحديث العداد من السيرفر إذا لم نكن في وضع صامت
             if (!isSilent) {
                 countTime = Math.max(0, res.data.countdown || 10);
                 $(".coutDown")[0].innerHTML = countTime + "s";
                 
+                // تحديث حالة status بناءً على العداد
+                if (res.data.countdown > 0) {
+                    status = 0; // يمكن التحديد
+                    gameState.canSelect = true;
+                } else {
+                    status = 1; // جاري السحب
+                    gameState.canSelect = false;
+                }
+                
                 // إعادة تعيين المؤقت فقط إذا كنا في حالة التحديد
                 if (status === 0 && !gameState.isRolling && !gameState.isResultShowing) {
                     if (countTimer) clearInterval(countTimer);
                     countDown();
+                    
+                    // إظهار العنوان المناسب
+                    $(".title2").hide();
+                    $(".title1").show();
                 }
-            }
-
-            // إدارة الحالة بناءً على العداد
-            if (res.data.countdown <= 0 && status === 0) {
-                status = 1;
-                gameState.canSelect = false;
-                if (!gameState.isRolling) {
-                    roll();
-                }
-            } else if (res.data.countdown > 0) {
-                status = 0;
-                gameState.canSelect = true;
-                $(".title2").hide();
-                $(".title1").show();
             }
 
             // نتيجة الجولة السابقة
@@ -727,35 +738,54 @@ function getInfo(_round, isSilent) {
             }
             $(".giftList").html(giftListHtml);
 
-            // عرض الرهانات الحالية للجولة
-            if (res.data.select && Object.keys(res.data.select).length) {
-                // إعادة تعيين selectArr من البيانات المستلمة
-                selectArr = Object.keys(res.data.select);
-                selectCount = selectArr.length;
-                
-                var ak = Object.keys(res.data.select);
-                var vk = Object.values(res.data.select);
-                
-                // إعادة تعيين أولاً
-                for (var i = 1; i <= 8; i++) {
-                    $(`.item${i} .selected div:nth-child(2) div`)[0].innerHTML = "0";
-                    $(`.item${i} .selected`).hide();
-                }
-                
-                // تعيين القيم الجديدة
-                for (var i = 0; i < ak.length; i++) {
-                    var itemIndex = searchGift(ak[i]);
-                    $(`.item${itemIndex} .selected div:nth-child(2) div`)[0].innerHTML = vk[i];
-                    $(`.item${itemIndex} .selected`).show();
+            // إذا كانت هذه نتيجة جولة سابقة، لا نعيد تعيين التحديدات
+            if (_round) {
+                // عرض الرهانات الحالية للجولة
+                if (res.data.select && Object.keys(res.data.select).length) {
+                    // إعادة تعيين selectArr من البيانات المستلمة
+                    selectArr = Object.keys(res.data.select);
+                    selectCount = selectArr.length;
+                    
+                    var ak = Object.keys(res.data.select);
+                    var vk = Object.values(res.data.select);
+                    
+                    // تعيين القيم الجديدة
+                    for (var i = 0; i < ak.length; i++) {
+                        var itemIndex = searchGift(ak[i]);
+                        $(`.item${itemIndex} .selected div:nth-child(2) div`)[0].innerHTML = vk[i];
+                        $(`.item${itemIndex} .selected`).show();
+                    }
                 }
             } else if (!isSilent) {
-                // إعادة تعيين selectArr فقط إذا لم نكن في تحديث صامت
-                selectArr = [];
-                selectCount = 0;
-                
-                for (var i = 1; i <= 8; i++) {
-                    $(`.item${i} .selected div:nth-child(2) div`)[0].innerHTML = "0";
-                    $(`.item${i} .selected`).hide();
+                // عرض الرهانات الحالية للجولة الجديدة
+                if (res.data.select && Object.keys(res.data.select).length) {
+                    selectArr = Object.keys(res.data.select);
+                    selectCount = selectArr.length;
+                    
+                    var ak = Object.keys(res.data.select);
+                    var vk = Object.values(res.data.select);
+                    
+                    // إعادة تعيين أولاً
+                    for (var i = 1; i <= 8; i++) {
+                        $(`.item${i} .selected div:nth-child(2) div`)[0].innerHTML = "0";
+                        $(`.item${i} .selected`).hide();
+                    }
+                    
+                    // تعيين القيم الجديدة
+                    for (var i = 0; i < ak.length; i++) {
+                        var itemIndex = searchGift(ak[i]);
+                        $(`.item${itemIndex} .selected div:nth-child(2) div`)[0].innerHTML = vk[i];
+                        $(`.item${itemIndex} .selected`).show();
+                    }
+                } else {
+                    // إعادة تعيين selectArr فقط إذا لم نكن في تحديث صامت
+                    selectArr = [];
+                    selectCount = 0;
+                    
+                    for (var i = 1; i <= 8; i++) {
+                        $(`.item${i} .selected div:nth-child(2) div`)[0].innerHTML = "0";
+                        $(`.item${i} .selected`).hide();
+                    }
                 }
             }
 
@@ -767,6 +797,13 @@ function getInfo(_round, isSilent) {
                     res.data.winGold,
                     res.data.avatar
                 );
+            }
+            
+            // إذا كان العداد 0 ولم نكن في حالة سحب، نبدأ السحب
+            if (res.data.countdown <= 0 && status === 0 && !gameState.isRolling && !_round) {
+                console.log("Countdown reached 0, starting roll...");
+                status = 1;
+                roll();
             }
         } else {
             console.error("Error in game info:", res);
