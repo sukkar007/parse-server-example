@@ -63,6 +63,18 @@ Parse.Cloud.define('sendPush', async (request) => {
         return Promise.reject(error);
     });
 });
+Parse.Cloud.beforeSave(async (request) => {
+  const object = request.object;
+
+  if (!object.getACL()) {
+    const acl = new Parse.ACL();
+    acl.setPublicReadAccess(true); // الجميع يمكنهم القراءة
+    if (request.user) {
+      acl.setWriteAccess(request.user, true); // المؤلف فقط يمكنه الكتابة
+    }
+    object.setACL(acl);
+  }
+});
 
 //////////////////////////////////////////////////////////
 // Update Password
