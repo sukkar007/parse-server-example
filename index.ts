@@ -1,19 +1,29 @@
-const express = require('express');
-const { ParseServer } = require('parse-server');
-const ParseDashboard = require('parse-dashboard');
-const path = require('path');
-const http = require('http');
-const { config } = require('./config.js');
+import express from 'express';
+import { ParseServer } from 'parse-server';
+import ParseDashboard from 'parse-dashboard';
+import path from 'path';
+import http from 'http';
+import { fileURLToPath } from 'url';
+import { config } from './config.js';
 
-const __dirname = path.resolve();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const app = express();
 
-// Enable CORS
+// Enable CORS and public permissions
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Parse-Application-Id, X-Parse-REST-API-Key, X-Parse-Master-Key, X-Parse-Session-Token');
   res.header('Access-Control-Allow-Credentials', 'true');
+  
+  // Allow public access to all operations
+  if (!req.get('X-Parse-Application-Id')) {
+    req.set('X-Parse-Application-Id', config.appId);
+  }
+  if (!req.get('X-Parse-REST-API-Key')) {
+    req.set('X-Parse-REST-API-Key', config.restAPIKey);
+  }
   
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
@@ -27,6 +37,20 @@ const mountPath = process.env.PARSE_MOUNT || '/parse';
 const server = new ParseServer({
   ...config,
   allowClientClassCreation: true,
+  allowCustomObjectId: true,
+  enforcePrivateUsers: false,
+  // Enable public access to all classes
+  classLevelPermissions: {
+    '*': {
+      'find': {},
+      'count': {},
+      'get': {},
+      'create': {},
+      'update': {},
+      'delete': {},
+      'addField': {}
+    }
+  }
 });
 server.start().then(() => {
   app.use(mountPath, server.app);

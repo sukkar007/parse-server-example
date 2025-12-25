@@ -26,4 +26,18 @@ export const config = {
 
   // ⚠️ ملاحظة: clientClassCreation و dashboardUsers لا توضع هنا
   // لتفعيل إنشاء أي Class تلقائي، استخدم allowClientClassCreation عند إنشاء ParseServer
+
+  // صلاحيات عامة للجميع
+  // السماح للجميع بإنشاء وقراءة وتعديل وحذف الجداول
+  publicPermissions: {
+    create: true,
+    read: true,
+    update: true,
+    delete: true
+  },
+
+  // إعدادات الأمان
+  enforcePrivateUsers: false,
+  allowClientClassCreation: true,
+  allowCustomObjectId: true,
 };
