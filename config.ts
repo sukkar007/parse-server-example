@@ -5,14 +5,34 @@ export const config = {
     process.env.DATABASE_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/dev',
   cloud: './cloud/main.js',
   appId: process.env.APP_ID || 'myAppId',
-  masterKey: process.env.MASTER_KEY || '', //Add your master key here. Keep it secret!
+  masterKey: process.env.MASTER_KEY || '', // ضع Master Key الخاص بك
   clientKey: process.env.CLIENT_KEY || 'myClientKey',
   restAPIKey: process.env.REST_API_KEY || 'myRestApiKey',
   javascriptKey: process.env.JAVASCRIPT_KEY || 'myJavascriptKey',
-  serverURL: process.env.SERVER_URL || 'http://localhost:1337/parse', // Don't forget to change to https if needed
-  liveQuery: {
-    classNames: ['Posts', 'Comments', 'Streaming', 'User', 'Installation'], // List of classes to support for query subscriptions
+  serverURL: process.env.SERVER_URL || 'http://localhost:1337/parse',
+
+  // منح كل الصلاحيات للمستخدمين
+  classLevelPermissions: {
+    '*': {
+      find: { '*': true },
+      count: { '*': true },
+      get: { '*': true },
+      create: { '*': true },
+      update: { '*': true },
+      delete: { '*': true },
+      addField: { '*': true },
+    },
   },
+  allowClientClassCreation: true,
+  allowCustomObjectId: true,
+  enforcePrivateUsers: false,
+  revokeSessionOnPasswordChange: false,
+
+  // Live Query لكل الكلاسات
+  liveQuery: {
+    classNames: ['*'], // كل الكلاسات مفعلة للـ Live Query
+  },
+
   schema: {
     definitions: schemaDefinitions,
     lockSchemas: false,
@@ -20,7 +40,8 @@ export const config = {
     recreateModifiedFields: false,
     deleteExtraFields: false,
   },
- dashboardUsers: [
+
+  dashboardUsers: [
     {
       user: process.env.DASHBOARD_USER || 'admin',
       pass: process.env.DASHBOARD_PASS || 'admin123',
