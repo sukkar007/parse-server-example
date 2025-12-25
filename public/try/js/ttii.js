@@ -207,7 +207,7 @@ function openDraw() {
 
 function sureClick(choice, index) {
     // التحقق من الرصيد
-    var currentBalance = parseFloat($('.balanceCount').text());
+    let currentBalance = parseFloat($('.balanceCount').text());
     if (currentBalance < currentGold) {
         showSuccess(info.lang == "ar" ? "رصيد غير كافٍ!" : "Insufficient balance!");
         return;
@@ -229,10 +229,10 @@ function sureClick(choice, index) {
             }
 
             var list = [6, 7, 8, 1, 2, 3, 4, 5];
-            var temp = $(".item" + list[index] + " .selected div:nth-child(2) div")[0].innerHTML;
-            $(".item" + list[index] + " .selected div:nth-child(2) div")[0].innerHTML = 
+            var temp = $(`.item${list[index]} .selected div:nth-child(2) div`)[0].innerHTML;
+            $(`.item${list[index]} .selected div:nth-child(2) div`)[0].innerHTML = 
                 parseInt(temp) + parseInt(currentGold);
-            $(".item" + list[index] + " .selected").show();
+            $(`.item${list[index]} .selected`).show();
 
             // تحديث الرصيد
             if (res.balance !== undefined) {
@@ -264,12 +264,12 @@ function roll(dir) {
     $(".title2").show();
     $(".coutDown")[0].innerHTML = countTime + "s";
     
-    var rollCountTimer = setInterval(function() {
+    var countTimer = setInterval(function() {
         countTime--;
         if (countTime <= 0) {
             countTime = 0;
             status = 0;
-            clearInterval(rollCountTimer);
+            clearInterval(countTimer);
             clearInterval(rollTimer);
             for (var i = 0; i < $(".item .gray").length; i++) {
                 $($(".item .gray")[i]).hide();
@@ -304,7 +304,6 @@ function roll(dir) {
 var hideLock = false;
 
 function bindEvent() {
-    // اختيار قيمة الرهان
     $(".clickArea .clickItem").click(function() {
         for (var i = 0; i < $(".clickItem").length; i++) {
             $($(".clickItem").removeClass("active"));
@@ -314,7 +313,6 @@ function bindEvent() {
         console.log("Selected gold:", currentGold);
     });
     
-    // معالجة إخفاء/إظهار الصفحة
     try {
         document.addEventListener("visibilitychange", function() {
             if (document.hidden) {
@@ -332,7 +330,7 @@ function bindEvent() {
         console.error("Visibility change error:", e);
     }
 
-    // ربط أحداث النقر على الفواكه - الطريقة الصحيحة
+    // ربط أحداث النقر على الفواكه
     for (var i = 0; i < 8; i++) {
         (function(index) {
             $(".item" + (index + 1)).click(function() {
@@ -343,48 +341,6 @@ function bindEvent() {
             });
         })(i);
     }
-
-    // السجلات
-    $(".records").click(function() {
-        getBill();
-        $(".recordsBg").show();
-    });
-    $(".recordsBg .modalBack").click(function() {
-        $(".recordsBg").hide();
-    });
-
-    // القواعد
-    $(".rule").click(function() {
-        $(".ruleBg").show();
-    });
-    $(".ruleBg").click(function() {
-        $(".ruleBg").hide();
-    });
-
-    // الترتيب
-    $(".rank").click(function() {
-        getRank();
-        $(".rankBg").show();
-    });
-    $(".rankBg .modalBack").click(function() {
-        $(".rankBg").hide();
-    });
-    
-    $(".reword").click(function(e) {
-        e.stopPropagation();
-    });
-
-    $(".rewardBg .modalBack").click(function() {
-        $(".rewardBg").hide();
-    });
-
-    $(".rewordNo").click(function(e) {
-        e.stopPropagation();
-    });
-    
-    $(".pop-success").click(function(e) {
-        e.stopPropagation();
-    });
 }
 
 /**
@@ -642,7 +598,7 @@ function getBill() {
                     moment(tempItem.createTime).format("YYYY/MM/DD") +
                     "</div><div>" +
                     moment(tempItem.createTime).format("HH:mm:ss") +
-                    "</div></div></div>';
+                    "</div></div></div>";
             }
             $(".records-list").html(innerHTML);
         }
