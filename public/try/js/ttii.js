@@ -5,7 +5,7 @@
 
 var count = 4;
 var rollCount = 1;
-var countTime = 10;
+var countTime = 30; // زمن الجولة من السيرفر
 var round = 0;
 
 var selectCount = 0;
@@ -21,10 +21,12 @@ var choiceList = ["g", "h", "a", "b", "c", "d", "e", "f"];
 var status = 0; // 0 يمكن النقر, 1 جاري السحب, 2 تم السحب
 var currentGold = 1;
 var openDrawTimer = null;
-var lastClickTime = 0; // لمنع النقر السريع المتكرر
-var CLICK_DELAY = 500; // تأخير 500ms بين النقرات
+var lastClickTime = 0;
+var CLICK_DELAY = 500;
+var serverStatus = 0; // حالة اللعبة من السيرفر
+var canBet = true; // يمكن وضع الرهان
 
-// معلومات اللاعب من تطبيق Flamingo (بدون token للأمان)
+// معلومات اللاعب من تطبيق Flamingo
 var info = window.flamingoPlayerInfo || {
     uid: '',
     lang: 'en',
@@ -37,18 +39,16 @@ var info = window.flamingoPlayerInfo || {
 // تخزين callbacks للطلبات المعلقة
 var pendingRequests = {};
 var requestIdCounter = 0;
-var isRequestInProgress = false; // لمنع الطلبات المتزامنة
+var isRequestInProgress = false;
 
 console.log("Player Info:", info);
 
-// استلام معلومات اللاعب من التطبيق
 window.onFlamingoPlayerInfo = function(playerInfo) {
     info = playerInfo;
     console.log("Received player info:", info);
     init();
 };
 
-// استلام الاستجابات من التطبيق
 window.onFlamingoResponse = function(response) {
     console.log("Received response from app:", response);
     
@@ -75,19 +75,17 @@ var env = (function() {
         isProd,
         ios: !!ua.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/),
         android: ua.indexOf('Android') > -1 || ua.indexOf('Adr') > -1,
-        app: true // دائماً داخل التطبيق
+        app: true
     };
 })();
 
 $(document).ready(function() {
     console.log("Document ready");
     
-    // انتظار معلومات اللاعب من التطبيق
     if (window.flamingoPlayerInfo) {
         info = window.flamingoPlayerInfo;
         init();
     } else {
-        // انتظار قصير ثم المحاولة
         setTimeout(function() {
             if (window.flamingoPlayerInfo) {
                 info = window.flamingoPlayerInfo;
@@ -106,6 +104,9 @@ function init() {
     getInfo();
     getBill();
     getRank();
+    
+    // بدء التحديث الدوري
+    startAutoRefresh();
 }
 
 function showHand() {
@@ -194,13 +195,16 @@ function countDown() {
     }
     countTimer = setInterval(function() {
         countTime--;
+        $(".coutDown")[0].innerHTML = countTime + "s";
+        
+        // تحديث حالة اللعبة بناءً على الوقت المتبقي
         if (countTime <= 0) {
             countTime = 0;
-            status = 1;
-            roll();
+            // فقط قم بتحديث حالة السحب، لا تغير status
             clearInterval(countTimer);
+            // سيقوم السيرفر بتحديث الحالة
+            getInfo();
         }
-        $(".coutDown")[0].innerHTML = countTime + "s";
     }, 1000);
 }
 
@@ -209,28 +213,30 @@ function openDraw() {
 }
 
 function sureClick(choice, index) {
-    // منع النقر السريع المتكرر
+    // التحقق من الوقت المتبقي
+    if (countTime <= 3) { // آخر 3 ثواني لا يمكن الرهان
+        showSuccess(info.lang == "ar" ? "انتهت فترة الرهان، انتظر الجولة القادمة" : "Betting period ended");
+        return;
+    }
+
+    // منع النقر السريع
     var now = Date.now();
     if (now - lastClickTime < CLICK_DELAY) {
-        console.log("Click too fast, ignoring...");
         return;
     }
     lastClickTime = now;
     
-    // منع الطلبات المتزامنة
     if (isRequestInProgress) {
-        showSuccess(info.lang == "ar" ? "جاري معالجة الطلب السابق..." : "Processing previous request...");
+        showSuccess(info.lang == "ar" ? "جاري المعالجة..." : "Processing...");
         return;
     }
     
-    // التحقق من الرصيد
     let currentBalance = parseFloat($('.balanceCount').text());
     if (currentBalance < currentGold) {
         showSuccess(info.lang == "ar" ? "رصيد غير كافٍ!" : "Insufficient balance!");
         return;
     }
 
-    // التحقق من الحد الأقصى للاختيارات
     var isHas = false;
     for (var i = 0; i < selectArr.length; i++) {
         if (selectArr[i] == choice) {
@@ -238,18 +244,15 @@ function sureClick(choice, index) {
         }
     }
     if (selectArr.length >= 5 && !isHas) {
-        showSuccess(info.lang == "ar" ? "الحد الأقصى للاختيارات 5" : "Max 5 selections");
+        showSuccess(info.lang == "ar" ? "الحد الأقصى 5 فواكه" : "Max 5 fruits");
         return;
     }
 
-    // تحديث الرصيد مؤقتاً
     $('.balanceCount').text((currentBalance - currentGold).toFixed(2));
     
-    // تعطيل النقر مؤقتاً
     isRequestInProgress = true;
     $(".item").css("pointer-events", "none");
 
-    // إرسال الطلب عبر التطبيق (آمن)
     callFlamingoApp('game_choice', {
         choice: choice,
         gold: currentGold,
@@ -271,18 +274,15 @@ function sureClick(choice, index) {
                 parseInt(temp || 0) + parseInt(currentGold);
             $(`.item${list[index]} .selected`).show();
 
-            // تحديث الرصيد من الاستجابة
             if (res.balance !== undefined) {
                 $('.balanceCount').text(parseFloat(res.balance).toFixed(2));
             }
             
-            // تحديث الرصيد في واجهة التطبيق
             sendToApp({ action: 'refreshBalance' });
             
-            showSuccess(info.lang == "ar" ? "تم وضع الرهان بنجاح!" : "Bet placed successfully!");
+            showSuccess(info.lang == "ar" ? "تم الرهان بنجاح!" : "Bet successful!");
         } else if (res.code == 10062) {
             showSuccess(info.lang == "ar" ? "يرجى الشحن" : "Please recharge");
-            // إعادة الرصيد
             $('.balanceCount').text(currentBalance.toFixed(2));
         } else {
             showSuccess(res.message || 'Error');
@@ -309,7 +309,6 @@ function roll(dir) {
         countTime--;
         if (countTime <= 0) {
             countTime = 0;
-            status = 0;
             clearInterval(countTimer);
             clearInterval(rollTimer);
             for (var i = 0; i < $(".item .gray").length; i++) {
@@ -345,7 +344,6 @@ function roll(dir) {
 var hideLock = false;
 
 function bindEvent() {
-    // حدث النقر على اختيار المبلغ الذهبي
     $(".clickArea .clickItem").click(function() {
         for (var i = 0; i < $(".clickItem").length; i++) {
             $($(".clickItem")[i]).removeClass("active");
@@ -355,22 +353,20 @@ function bindEvent() {
         console.log("Selected gold:", currentGold);
     });
     
-    // حدث النقر على الفواكه (العناصر)
     $(".item").click(function() {
-        console.log("Item clicked, status:", status, "data-index:", $(this).data("index"));
+        console.log("Item clicked, countTime:", countTime, "status:", status);
         
-        if (status !== 0) {
-            showSuccess(info.lang == "ar" ? "انتهت فترة الرهان، انتظر الجولة القادمة" : "Betting period ended, wait for next round");
+        // التحقق من الوقت المتبقي أولاً
+        if (countTime <= 3) {
+            showSuccess(info.lang == "ar" ? "انتهت فترة الرهان، انتظر الجولة القادمة" : "Betting period ended");
             return;
         }
         
-        // منع النقر إذا كان هناك طلب قيد المعالجة
         if (isRequestInProgress) {
-            console.log("Request in progress, ignoring click");
+            console.log("Request in progress");
             return;
         }
         
-        // الحصول على العنصر المحدد
         var itemIndex = $(this).data("index");
         if (itemIndex === undefined || itemIndex < 0 || itemIndex > 7) {
             console.error("Invalid item index:", itemIndex);
@@ -379,7 +375,6 @@ function bindEvent() {
         
         console.log("Selected item index:", itemIndex);
         
-        // التحقق من الحد الأقصى للاختيارات
         var isHas = false;
         for (var i = 0; i < selectArr.length; i++) {
             if (selectArr[i] == choiceList[itemIndex]) {
@@ -387,15 +382,13 @@ function bindEvent() {
             }
         }
         if (selectArr.length >= 5 && !isHas) {
-            showSuccess(info.lang == "ar" ? "الحد الأقصى للاختيارات 5" : "Max 5 selections");
+            showSuccess(info.lang == "ar" ? "الحد الأقصى 5 فواكه" : "Max 5 fruits");
             return;
         }
 
-        // استدعاء دالة النقر
         sureClick(choiceList[itemIndex], itemIndex);
     });
     
-    // أحداث الأزرار الأخرى
     $(".records").click(function() {
         getBill();
         $(".recordsBg").show();
@@ -438,12 +431,10 @@ function bindEvent() {
         e.stopPropagation();
     });
     
-    // إضافة زر إغلاق
     $(".close-btn").click(function() {
         closeGame();
     });
     
-    // حدث تغيير حالة الصفحة
     try {
         document.addEventListener("visibilitychange", function() {
             if (document.hidden) {
@@ -462,21 +453,15 @@ function bindEvent() {
     }
 }
 
-/**
- * دالة آمنة للاتصال بـ Parse عبر التطبيق
- * بدلاً من الاتصال المباشر بـ Parse Server
- */
 function callFlamingoApp(action, params) {
     return new Promise(function(resolve, reject) {
         var requestId = 'req_' + (++requestIdCounter) + '_' + Date.now();
         
-        // تخزين callback
         pendingRequests[requestId] = {
             resolve: resolve,
             reject: reject
         };
         
-        // إرسال الطلب للتطبيق
         var message = {
             action: action,
             requestId: requestId,
@@ -485,22 +470,17 @@ function callFlamingoApp(action, params) {
         
         console.log("Sending to app:", action, message);
         
-        // طريقة 1: استخدام FlamingoApp إذا كان موجوداً
         if (window.FlamingoApp) {
             window.FlamingoApp.postMessage(JSON.stringify(message));
         } 
-        // طريقة 2: استخدام window.webkit إذا كان في iOS
         else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.FlamingoApp) {
             window.webkit.messageHandlers.FlamingoApp.postMessage(message);
         }
-        // طريقة 3: استخدام prompt للتواصل مع التطبيق (طريقة قديمة)
         else if (window.prompt) {
             prompt(JSON.stringify(message));
         }
-        // طريقة 4: استخدام console.log للتصحيح
         else {
             console.log("App message:", message);
-            // محاكاة الاستجابة للاختبار
             setTimeout(function() {
                 if (pendingRequests[requestId]) {
                     if (action === 'game_choice') {
@@ -518,7 +498,7 @@ function callFlamingoApp(action, params) {
                                 gold: 1000,
                                 profit: 50,
                                 round: round + 1,
-                                countdown: 10,
+                                countdown: 30, // جولة 30 ثانية
                                 result: choiceList[Math.floor(Math.random() * choiceList.length)],
                                 resultList: ["g", "h", "a", "b", "c", "d", "e", "f"],
                                 select: {},
@@ -532,7 +512,6 @@ function callFlamingoApp(action, params) {
             }, 500);
         }
         
-        // Timeout بعد 10 ثانية
         setTimeout(function() {
             if (pendingRequests[requestId]) {
                 delete pendingRequests[requestId];
@@ -542,7 +521,6 @@ function callFlamingoApp(action, params) {
     });
 }
 
-// إرسال رسالة بسيطة للتطبيق (بدون انتظار رد)
 function sendToApp(data) {
     if (window.FlamingoApp) {
         window.FlamingoApp.postMessage(JSON.stringify(data));
@@ -606,7 +584,7 @@ function getInfo(_round, isChoice) {
         console.log("Info response:", res);
         if (res.code === 200 && res.data) {
             if (res.data.countdown && res.data.countdown < 0) {
-                showSuccess(info.lang == "ar" ? "خطأ في النظام، جاري إعادة الاتصال..." : "System Error, reconnecting...");
+                showSuccess(info.lang == "ar" ? "إعادة الاتصال..." : "Reconnecting...");
                 
                 if (countTimer) clearInterval(countTimer);
                 if (handTimer) clearInterval(handTimer);
@@ -624,14 +602,16 @@ function getInfo(_round, isChoice) {
             $(".profitCount")[0].innerHTML = res.data.profit || 0;
             $(".round")[0].innerHTML = (info.lang == "ar" ? "جولة " : "Round ") + res.data.round;
 
-            if (status == 1 && isChoice) return;
+            // تحديث round فقط
             round = res.data.round;
 
-            if (!isChoice) {
-                countTime = res.data.countdown;
+            // تحديث countTime من السيرفر دائماً
+            var newCountTime = res.data.countdown || 30;
+            if (newCountTime !== countTime) {
+                countTime = newCountTime;
                 $(".coutDown")[0].innerHTML = countTime + "s";
                 
-                // إعادة تعيين العداد إذا كان مختلفاً
+                // إعادة تشغيل العداد فقط إذا تغير الوقت
                 if (countTimer) {
                     clearInterval(countTimer);
                 }
@@ -643,7 +623,6 @@ function getInfo(_round, isChoice) {
 
             // نتيجة الجولة السابقة
             if (res.data.result && res.data.result != "") {
-                // إزالة النشاط من جميع العناصر أولاً
                 for (var i = 0; i < $(".item").length; i++) {
                     $(".item" + (i + 1)).removeClass("active");
                 }
@@ -659,10 +638,9 @@ function getInfo(_round, isChoice) {
             var giftListHtml = "";
             var resultList = res.data.resultList || [];
             
-            // عرض النتائج من الأقدم للأحدث (الأقدم أولاً)
             for (var i = 0; i < resultList.length; i++) {
                 var _index = searchGift(resultList[i]);
-                if (i == resultList.length - 1) { // الأخير (الأحدث)
+                if (i == resultList.length - 1) {
                     giftListHtml +=
                         '<div class="giftItem"><img src="images/gift_' +
                         _index +
@@ -675,11 +653,6 @@ function getInfo(_round, isChoice) {
                 }
             }
             $(".giftList").html(giftListHtml);
-
-            if (_round) {
-                clearInterval(handTimer);
-                showHand();
-            }
 
             // عرض الرهانات الحالية
             if (res.data.select && Object.keys(res.data.select).length) {
@@ -826,36 +799,24 @@ function changeLang(defaultLang) {
     languageSelect(defaultLang);
 }
 
-// دالة لإغلاق اللعبة
 function closeGame() {
     sendToApp({ action: 'close' });
 }
 
-// دالة للمساعدة في التصحيح
 function debugInfo() {
     console.log("Current game state:");
     console.log("Status:", status);
     console.log("Round:", round);
-    console.log("Current gold:", currentGold);
-    console.log("Selected items:", selectArr);
-    console.log("Selected count:", selectCount);
     console.log("Countdown time:", countTime);
-    console.log("Player info:", info);
-    console.log("Is request in progress:", isRequestInProgress);
+    console.log("Selected items:", selectArr);
+    console.log("Current gold:", currentGold);
 }
 
-// دالة للتحديث الدوري للمعلومات
 function startAutoRefresh() {
     setInterval(function() {
-        if (status === 0) {
+        // تحديث المعلومات فقط إذا كان الوقت أكثر من 3 ثواني
+        if (countTime > 3) {
             getInfo(round, false);
         }
-    }, 3000); // تحديث كل 3 ثواني
+    }, 5000); // تحديث كل 5 ثواني
 }
-
-// بدء التحديث التلقائي بعد التهيئة
-$(document).ready(function() {
-    setTimeout(function() {
-        startAutoRefresh();
-    }, 3000);
-});
