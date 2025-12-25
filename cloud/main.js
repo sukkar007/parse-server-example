@@ -616,3 +616,419 @@ Parse.Cloud.define("game_validate_player", async (request) => {
     }
   };
 });
+
+
+//////////////////////////////////////////////////////////
+// =================== TABLE MANAGEMENT ===================
+//////////////////////////////////////////////////////////
+
+/**
+ * Create a new table (Parse Class) with public read/write permissions
+ */
+Parse.Cloud.define("createTable", async (request) => {
+  const { className, schema } = request.params;
+
+  if (!className) {
+    throw new Parse.Error(400, "className is required");
+  }
+
+  try {
+    const obj = new Parse.Object(className);
+    
+    // Set public permissions
+    const acl = new Parse.ACL();
+    acl.setPublicReadAccess(true);
+    acl.setPublicWriteAccess(true);
+    obj.setACL(acl);
+    
+    // Add schema fields if provided
+    if (schema && typeof schema === 'object') {
+      Object.keys(schema).forEach(key => {
+        obj.set(key, schema[key]);
+      });
+    }
+    
+    await obj.save(null, { useMasterKey: true });
+    
+    return {
+      success: true,
+      message: `Table '${className}' created successfully`,
+      className: className
+    };
+  } catch (error) {
+    throw new Parse.Error(400, `Failed to create table: ${error.message}`);
+  }
+});
+
+/**
+ * Read records from a table with optional filters
+ */
+Parse.Cloud.define("readTable", async (request) => {
+  const { className, filters, limit } = request.params;
+  
+  if (!className) {
+    throw new Parse.Error(400, "className is required");
+  }
+
+  try {
+    const query = new Parse.Query(className);
+    
+    // Apply filters
+    if (filters && typeof filters === 'object') {
+      Object.keys(filters).forEach(key => {
+        const value = filters[key];
+        if (typeof value === 'object' && value.operator) {
+          // Handle operators like $gt, $lt, $eq, etc.
+          switch (value.operator) {
+            case '$gt':
+              query.greaterThan(key, value.value);
+              break;
+            case '$lt':
+              query.lessThan(key, value.value);
+              break;
+            case '$gte':
+              query.greaterThanOrEqualTo(key, value.value);
+              break;
+            case '$lte':
+              query.lessThanOrEqualTo(key, value.value);
+              break;
+            case '$ne':
+              query.notEqualTo(key, value.value);
+              break;
+            case '$in':
+              query.containedIn(key, value.value);
+              break;
+            default:
+              query.equalTo(key, value);
+          }
+        } else {
+          query.equalTo(key, value);
+        }
+      });
+    }
+    
+    const queryLimit = limit || 100;
+    query.limit(queryLimit);
+    const results = await query.find({ useMasterKey: true });
+    
+    return {
+      success: true,
+      data: results.map(obj => obj.toJSON()),
+      count: results.length
+    };
+  } catch (error) {
+    throw new Parse.Error(400, `Failed to read table: ${error.message}`);
+  }
+});
+
+/**
+ * Create a new record in a table
+ */
+Parse.Cloud.define("createRecord", async (request) => {
+  const { className, data } = request.params;
+  
+  if (!className) {
+    throw new Parse.Error(400, "className is required");
+  }
+  if (!data || typeof data !== 'object') {
+    throw new Parse.Error(400, "data is required and must be an object");
+  }
+
+  try {
+    const obj = new Parse.Object(className);
+    
+    // Set public permissions
+    const acl = new Parse.ACL();
+    acl.setPublicReadAccess(true);
+    acl.setPublicWriteAccess(true);
+    obj.setACL(acl);
+    
+    // Set data
+    Object.keys(data).forEach(key => {
+      obj.set(key, data[key]);
+    });
+    
+    await obj.save(null, { useMasterKey: true });
+    
+    return {
+      success: true,
+      id: obj.id,
+      data: obj.toJSON()
+    };
+  } catch (error) {
+    throw new Parse.Error(400, `Failed to create record: ${error.message}`);
+  }
+});
+
+/**
+ * Update a record in a table
+ */
+Parse.Cloud.define("updateRecord", async (request) => {
+  const { className, objectId, data } = request.params;
+  
+  if (!className) {
+    throw new Parse.Error(400, "className is required");
+  }
+  if (!objectId) {
+    throw new Parse.Error(400, "objectId is required");
+  }
+  if (!data || typeof data !== 'object') {
+    throw new Parse.Error(400, "data is required and must be an object");
+  }
+
+  try {
+    const query = new Parse.Query(className);
+    const obj = await query.get(objectId, { useMasterKey: true });
+    
+    if (!obj) {
+      throw new Parse.Error(404, "Record not found");
+    }
+    
+    // Update data
+    Object.keys(data).forEach(key => {
+      obj.set(key, data[key]);
+    });
+    
+    await obj.save(null, { useMasterKey: true });
+    
+    return {
+      success: true,
+      id: obj.id,
+      data: obj.toJSON()
+    };
+  } catch (error) {
+    throw new Parse.Error(400, `Failed to update record: ${error.message}`);
+  }
+});
+
+/**
+ * Delete a record from a table
+ */
+Parse.Cloud.define("deleteRecord", async (request) => {
+  const { className, objectId } = request.params;
+  
+  if (!className) {
+    throw new Parse.Error(400, "className is required");
+  }
+  if (!objectId) {
+    throw new Parse.Error(400, "objectId is required");
+  }
+
+  try {
+    const query = new Parse.Query(className);
+    const obj = await query.get(objectId, { useMasterKey: true });
+    
+    if (!obj) {
+      throw new Parse.Error(404, "Record not found");
+    }
+    
+    await obj.destroy({ useMasterKey: true });
+    
+    return {
+      success: true,
+      message: `Record '${objectId}' deleted successfully`
+    };
+  } catch (error) {
+    throw new Parse.Error(400, `Failed to delete record: ${error.message}`);
+  }
+});
+
+/**
+ * Delete an entire table
+ */
+Parse.Cloud.define("deleteTable", async (request) => {
+  const { className } = request.params;
+  
+  if (!className) {
+    throw new Parse.Error(400, "className is required");
+  }
+
+  try {
+    const query = new Parse.Query(className);
+    const results = await query.find({ useMasterKey: true });
+    
+    // Delete all records
+    if (results.length > 0) {
+      await Parse.Object.destroyAll(results, { useMasterKey: true });
+    }
+    
+    return {
+      success: true,
+      message: `Table '${className}' deleted successfully`,
+      recordsDeleted: results.length
+    };
+  } catch (error) {
+    throw new Parse.Error(400, `Failed to delete table: ${error.message}`);
+  }
+});
+
+/**
+ * Get table schema/structure
+ */
+Parse.Cloud.define("getTableSchema", async (request) => {
+  const { className } = request.params;
+  
+  if (!className) {
+    throw new Parse.Error(400, "className is required");
+  }
+
+  try {
+    const query = new Parse.Query(className);
+    query.limit(1);
+    const results = await query.find({ useMasterKey: true });
+    
+    if (results.length === 0) {
+      return {
+        success: true,
+        className: className,
+        fields: {},
+        recordCount: 0
+      };
+    }
+    
+    const sampleRecord = results[0].toJSON();
+    const fields = {};
+    
+    Object.keys(sampleRecord).forEach(key => {
+      if (!['objectId', 'createdAt', 'updatedAt', 'ACL'].includes(key)) {
+        fields[key] = typeof sampleRecord[key];
+      }
+    });
+    
+    // Get total count
+    const countQuery = new Parse.Query(className);
+    const count = await countQuery.count({ useMasterKey: true });
+    
+    return {
+      success: true,
+      className: className,
+      fields: fields,
+      recordCount: count
+    };
+  } catch (error) {
+    throw new Parse.Error(400, `Failed to get table schema: ${error.message}`);
+  }
+});
+
+/**
+ * List all tables (classes) in the database
+ */
+Parse.Cloud.define("listTables", async (request) => {
+  try {
+    const query = new Parse.Query('_SCHEMA');
+    const results = await query.find({ useMasterKey: true });
+    
+    const tables = results
+      .map(obj => obj.get('className'))
+      .filter(name => !name.startsWith('_'));
+    
+    return {
+      success: true,
+      tables: tables,
+      count: tables.length
+    };
+  } catch (error) {
+    throw new Parse.Error(400, `Failed to list tables: ${error.message}`);
+  }
+});
+
+/**
+ * Batch create records
+ */
+Parse.Cloud.define("batchCreateRecords", async (request) => {
+  const { className, records } = request.params;
+  
+  if (!className) {
+    throw new Parse.Error(400, "className is required");
+  }
+  if (!Array.isArray(records)) {
+    throw new Parse.Error(400, "records must be an array");
+  }
+
+  try {
+    const objects = records.map(data => {
+      const obj = new Parse.Object(className);
+      
+      // Set public permissions
+      const acl = new Parse.ACL();
+      acl.setPublicReadAccess(true);
+      acl.setPublicWriteAccess(true);
+      obj.setACL(acl);
+      
+      // Set data
+      Object.keys(data).forEach(key => {
+        obj.set(key, data[key]);
+      });
+      
+      return obj;
+    });
+    
+    await Parse.Object.saveAll(objects, { useMasterKey: true });
+    
+    return {
+      success: true,
+      created: objects.length,
+      data: objects.map(obj => obj.toJSON())
+    };
+  } catch (error) {
+    throw new Parse.Error(400, `Failed to batch create records: ${error.message}`);
+  }
+});
+
+/**
+ * Count records in a table
+ */
+Parse.Cloud.define("countRecords", async (request) => {
+  const { className, filters } = request.params;
+  
+  if (!className) {
+    throw new Parse.Error(400, "className is required");
+  }
+
+  try {
+    const query = new Parse.Query(className);
+    
+    // Apply filters
+    if (filters && typeof filters === 'object') {
+      Object.keys(filters).forEach(key => {
+        const value = filters[key];
+        if (typeof value === 'object' && value.operator) {
+          switch (value.operator) {
+            case '$gt':
+              query.greaterThan(key, value.value);
+              break;
+            case '$lt':
+              query.lessThan(key, value.value);
+              break;
+            case '$gte':
+              query.greaterThanOrEqualTo(key, value.value);
+              break;
+            case '$lte':
+              query.lessThanOrEqualTo(key, value.value);
+              break;
+            case '$ne':
+              query.notEqualTo(key, value.value);
+              break;
+            case '$in':
+              query.containedIn(key, value.value);
+              break;
+            default:
+              query.equalTo(key, value);
+          }
+        } else {
+          query.equalTo(key, value);
+        }
+      });
+    }
+    
+    const count = await query.count({ useMasterKey: true });
+    
+    return {
+      success: true,
+      className: className,
+      count: count
+    };
+  } catch (error) {
+    throw new Parse.Error(400, `Failed to count records: ${error.message}`);
+  }
+});
