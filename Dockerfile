@@ -1,37 +1,29 @@
-# ========================
 # Builder stage
-# ========================
-FROM node:18.20.1-alpine AS builder
+FROM node:20.19.1-alpine AS builder
 
 WORKDIR /usr/src/parse
 
-# نسخ package.json و package-lock.json
-COPY package*.json ./
+COPY package*.json .
 
-# تثبيت الاعتماديات
 RUN npm install
 
-# نسخ باقي الملفات
 COPY . .
 
-# بناء المشروع (اختياري، يمكن تشغيل TSX مباشرة)
 RUN npm run build
 
-# ========================
-# Runtime stage
-# ========================
-FROM node:18.20.1-alpine
+# latest supported node version when this Dockerfile was written
+FROM node:20.19.1-alpine
 
 WORKDIR /usr/src/parse
 
-# نسخ الاعتماديات
+# Copy only the required files from the builder stage
 COPY --from=builder /usr/src/parse/node_modules ./node_modules
+COPY --from=builder /usr/src/parse/dist ./
+COPY --from=builder /usr/src/parse/public ./public
+COPY --from=builder /usr/src/parse/cloud ./cloud
 
-# نسخ الملفات المصدرية كاملة
-COPY . .
+VOLUME ["/usr/src/parse/cloud", "/usr/src/parse/logs"]
 
-# فتح البورت الافتراضي
 EXPOSE 1337
 
-# تشغيل المشروع مباشرة باستخدام tsx
-CMD ["npx", "tsx", "index.ts"]
+CMD ["node", "index.js"]
