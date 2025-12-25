@@ -1,29 +1,42 @@
+# ========================
 # Builder stage
-FROM node:20.19.1-alpine AS builder
+# ========================
+FROM node:18.20.1-alpine AS builder
 
 WORKDIR /usr/src/parse
 
-COPY package*.json .
+# نسخ ملفات package.json و package-lock.json (إذا موجود)
+COPY package*.json ./
 
+# تثبيت الاعتماديات
 RUN npm install
 
+# نسخ باقي الملفات
 COPY . .
 
+# بناء المشروع (TypeScript أو أي build script آخر)
 RUN npm run build
 
-# latest supported node version when this Dockerfile was written
-FROM node:20.19.1-alpine
+# ========================
+# Runtime stage
+# ========================
+FROM node:18.20.1-alpine
 
 WORKDIR /usr/src/parse
 
-# Copy only the required files from the builder stage
+# نسخ node_modules من مرحلة البناء
 COPY --from=builder /usr/src/parse/node_modules ./node_modules
+
+# نسخ ملفات البناء
 COPY --from=builder /usr/src/parse/dist ./
 COPY --from=builder /usr/src/parse/public ./public
 COPY --from=builder /usr/src/parse/cloud ./cloud
 
+# إنشاء مجلدات لحفظ البيانات واللوجات
 VOLUME ["/usr/src/parse/cloud", "/usr/src/parse/logs"]
 
+# فتح البورت الافتراضي للـ Parse Server
 EXPOSE 1337
 
+# تشغيل السيرفر
 CMD ["node", "index.js"]
