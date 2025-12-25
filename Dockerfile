@@ -5,7 +5,7 @@ FROM node:18.20.1-alpine AS builder
 
 WORKDIR /usr/src/parse
 
-# نسخ ملفات package.json و package-lock.json
+# نسخ package.json و package-lock.json
 COPY package*.json ./
 
 # تثبيت الاعتماديات
@@ -14,7 +14,7 @@ RUN npm install
 # نسخ باقي الملفات
 COPY . .
 
-# بناء المشروع (TypeScript)
+# بناء المشروع (اختياري، يمكن تشغيل TSX مباشرة)
 RUN npm run build
 
 # ========================
@@ -24,19 +24,14 @@ FROM node:18.20.1-alpine
 
 WORKDIR /usr/src/parse
 
-# نسخ node_modules من مرحلة البناء
+# نسخ الاعتماديات
 COPY --from=builder /usr/src/parse/node_modules ./node_modules
 
-# نسخ ملفات البناء
-COPY --from=builder /usr/src/parse/dist ./dist
-COPY --from=builder /usr/src/parse/public ./public
-COPY --from=builder /usr/src/parse/cloud ./cloud
+# نسخ الملفات المصدرية كاملة
+COPY . .
 
-# إنشاء مجلدات لحفظ البيانات واللوجات
-VOLUME ["/usr/src/parse/cloud", "/usr/src/parse/logs"]
-
-# فتح البورت الافتراضي للـ Parse Server
+# فتح البورت الافتراضي
 EXPOSE 1337
 
-# تشغيل السيرفر على ملف البناء
-CMD ["node", "dist/index.js"]
+# تشغيل المشروع مباشرة باستخدام tsx
+CMD ["npx", "tsx", "index.ts"]
