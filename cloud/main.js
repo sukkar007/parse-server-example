@@ -1,5 +1,6 @@
 [file content begin]
 const OneSignal = require('@onesignal/node-onesignal');
+import Parse from 'parse/node';
 
 // OneSignal config
 const app_id = "7dec5bab-5550-4977-af9d-563e58d64721";
@@ -13,7 +14,41 @@ const configuration = OneSignal.createConfiguration({
   restApiKey: rest_api_key,
 });
 const client = new OneSignal.DefaultApi(configuration);
+export async function setFullPermissions() {
+  const classes = ['Posts', 'Comments', 'Streaming', 'User', 'Installation']; // ضع كل الكلاسات هنا
 
+  for (const className of classes) {
+    const schema = new Parse.Schema(className);
+    try {
+      await schema.get(); // تحقق إذا الكلاس موجود
+      await schema.update({
+        classLevelPermissions: {
+          find: { '*': true },
+          get: { '*': true },
+          create: { '*': true },
+          update: { '*': true },
+          delete: { '*': true },
+          addField: { '*': true },
+        },
+      });
+    } catch (e) {
+      // إذا لم يكن موجود، إنشاء الكلاس مع الصلاحيات
+      await schema.save({
+        classLevelPermissions: {
+          find: { '*': true },
+          get: { '*': true },
+          create: { '*': true },
+          update: { '*': true },
+          delete: { '*': true },
+          addField: { '*': true },
+        },
+      });
+    }
+  }
+}
+
+// استدعاء الدالة في cloud/main.js عند تشغيل السيرفر
+setFullPermissions().then(() => console.log('CLPs set for all classes'));
 //////////////////////////////////////////////////////////
 // Send Push Notification
 //////////////////////////////////////////////////////////
