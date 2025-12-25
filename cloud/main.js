@@ -12,16 +12,26 @@ const configuration = OneSignal.createConfiguration({
   restApiKey: rest_api_key,
 });
 const client = new OneSignal.DefaultApi(configuration);
-// أضف هذه الدالة في Backend
+
+// =================== TIME & GAME SETTINGS ===================
+const ROUND_DURATION = 30; // 30 ثانية لكل جولة
+const GAME_START_TIMESTAMP = Math.floor(Date.now() / 1000); // وقت بدء اللعبة (اليوم)
+
+//////////////////////////////////////////////////////////
+// الحصول على وقت السيرفر (ثابت للجميع)
+//////////////////////////////////////////////////////////
 Parse.Cloud.define("get_server_time", async (request) => {
   return {
     code: 200,
     message: "Success",
     data: {
-      serverTime: Math.floor(Date.now() / 1000)
+      serverTime: Math.floor(Date.now() / 1000),
+      roundDuration: ROUND_DURATION,
+      gameStartTime: GAME_START_TIMESTAMP
     }
   };
 });
+
 //////////////////////////////////////////////////////////
 // Send Push Notification
 //////////////////////////////////////////////////////////
@@ -287,8 +297,7 @@ Parse.Cloud.beforeLogin(async (request) => {
 // =================== GAMES API ===================
 //////////////////////////////////////////////////////////
 
-// إعدادات اللعبة
-const ROUND_DURATION = 30; // مدة الجولة بالثواني
+// إعدادات الفواكه
 const FRUIT_MULTIPLIERS = {
   'g': 2,
   'h': 3,
@@ -312,10 +321,7 @@ const FRUIT_MAP = {
 };
 
 //////////////////////////////////////////////////////////
-// جلب معلومات اللعبة والجولة الحالية
-//////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////
-// جلب معلومات اللعبة والجولة الحالية
+// جلب معلومات اللعبة والجولة الحالية (محدث)
 //////////////////////////////////////////////////////////
 Parse.Cloud.define("game_info", async (request) => {
   const user = request.user;
@@ -323,141 +329,121 @@ Parse.Cloud.define("game_info", async (request) => {
     throw new Parse.Error(209, "User not authenticated");
   }
 
-  const userId = user.id;
-  
-  // حساب الجولة الحالية
+  const { round } = request.params;
   const currentTime = Math.floor(Date.now() / 1000);
-  const currentRound = Math.floor(currentTime / ROUND_DURATION);
-  const roundStartTime = currentRound * ROUND_DURATION;
+  
+  // حساب الجولة الحالية والعداد (ثابت للجميع)
+  const elapsedTime = currentTime - GAME_START_TIMESTAMP;
+  const currentRound = Math.max(0, Math.floor(elapsedTime / ROUND_DURATION));
+  const roundStartTime = GAME_START_TIMESTAMP + (currentRound * ROUND_DURATION);
   const roundEndTime = roundStartTime + ROUND_DURATION;
   const countdown = Math.max(0, roundEndTime - currentTime);
+  
+  // حالة الجولة
+  let gameStatus = "playing";
+  if (countdown <= 0) {
+    gameStatus = "drawing";
+  } else if (countdown <= 5) {
+    gameStatus = "ending_soon";
+  }
+
+  console.log("Game Info:", {
+    currentTime,
+    currentRound,
+    countdown,
+    gameStatus,
+    roundDuration: ROUND_DURATION,
+    gameStartTime: GAME_START_TIMESTAMP
+  });
 
   // جلب بيانات المستخدم
   await user.fetch({ useMasterKey: true });
-  const userCredits = user.get("credit") || 0;
-  const userProfit = user.get("gameProfit") || 0;
-
-  // التحقق من نتيجة الجولة السابقة
-  const FerrisWheelResults = Parse.Object.extend("FerrisWheelResults");
-  const FerrisWheelChoices = Parse.Object.extend("FerrisWheelChoices");
   
-  let previousWinningFruit = null;
-  let topList = [];
-  let lastResult = null;
-
-  // محاولة جلب النتيجة الموجودة أولاً
-  const lastResultQuery = new Parse.Query(FerrisWheelResults);
-  lastResultQuery.equalTo("round", currentRound - 1);
-  lastResult = await lastResultQuery.first({ useMasterKey: true });
-
-  if (!lastResult) {
-    // اختيار الفاكهة الرابحة عشوائياً
-    const fruitKeys = Object.keys(FRUIT_MAP);
-    const winningNumber = fruitKeys[Math.floor(Math.random() * fruitKeys.length)];
-    previousWinningFruit = FRUIT_MAP[winningNumber];
-
-    // محاولة حفظ النتيجة (مع التحقق من عدم وجودها)
-    try {
-      const newResult = new FerrisWheelResults();
-      newResult.set("round", currentRound - 1);
-      newResult.set("result", previousWinningFruit);
-      await newResult.save(null, { useMasterKey: true });
-
-      // تحديث أرباح الفائزين
-      const previousBetsQuery = new Parse.Query(FerrisWheelChoices);
-      previousBetsQuery.equalTo("round", currentRound - 1);
-      previousBetsQuery.equalTo("choice", previousWinningFruit);
-      const winningBets = await previousBetsQuery.find({ useMasterKey: true });
-
+  // إذا طلبنا نتيجة جولة محددة
+  if (round !== undefined) {
+    const FerrisWheelResults = Parse.Object.extend("FerrisWheelResults");
+    const FerrisWheelChoices = Parse.Object.extend("FerrisWheelChoices");
+    
+    // جلب نتيجة الجولة المطلوبة
+    const resultQuery = new Parse.Query(FerrisWheelResults);
+    resultQuery.equalTo("round", round);
+    const resultObj = await resultQuery.first({ useMasterKey: true });
+    
+    let winningFruit = null;
+    let topList = [];
+    let userWinGold = 0;
+    
+    if (resultObj) {
+      winningFruit = resultObj.get("result");
+      
+      // جلب قائمة الفائزين
+      const winnersQuery = new Parse.Query(FerrisWheelChoices);
+      winnersQuery.equalTo("round", round);
+      winnersQuery.equalTo("choice", winningFruit);
+      winnersQuery.descending("gold");
+      winnersQuery.limit(10);
+      const winningBets = await winnersQuery.find({ useMasterKey: true });
+      
       for (const bet of winningBets) {
         const betUserId = bet.get("userId");
         const betGold = bet.get("gold") || 0;
-        const winAmount = Math.floor(betGold * FRUIT_MULTIPLIERS[previousWinningFruit]);
-
+        const winAmount = Math.floor(betGold * (FRUIT_MULTIPLIERS[winningFruit] || 2));
+        
         const betUser = await new Parse.Query(Parse.User).get(betUserId, { useMasterKey: true });
-        betUser.increment("credit", winAmount);
-        betUser.increment("gameProfit", winAmount);
-        await betUser.save(null, { useMasterKey: true });
-
         topList.push({
           avatar: betUser.get("avatar")?.url() || "",
           nick: betUser.get("name") || betUser.get("username"),
           total: winAmount,
         });
-      }
-    } catch (saveError) {
-      // إذا فشل الحفظ بسبب تكرار، نجلب النتيجة الموجودة
-      console.log("Result already exists, fetching...");
-      lastResult = await lastResultQuery.first({ useMasterKey: true });
-      if (lastResult) {
-        previousWinningFruit = lastResult.get("result");
+        
+        // حساب أرباح المستخدم الحالي
+        if (betUserId === user.id) {
+          userWinGold = winAmount;
+        }
       }
     }
-  }
-
-  // إذا كانت النتيجة موجودة مسبقاً
-  if (lastResult && !previousWinningFruit) {
-    previousWinningFruit = lastResult.get("result");
-  }
-
-  // جلب قائمة الفائزين إذا لم تُجلب بعد
-  if (topList.length === 0 && previousWinningFruit) {
-    const winningBetsQuery = new Parse.Query(FerrisWheelChoices);
-    winningBetsQuery.equalTo("round", currentRound - 1);
-    winningBetsQuery.equalTo("choice", previousWinningFruit);
-    winningBetsQuery.limit(10);
-    const winningBets = await winningBetsQuery.find({ useMasterKey: true });
-
-    for (const bet of winningBets) {
-      const betUserId = bet.get("userId");
-      const betGold = bet.get("gold") || 0;
-      const winAmount = Math.floor(betGold * FRUIT_MULTIPLIERS[previousWinningFruit]);
-
-      const betUser = await new Parse.Query(Parse.User).get(betUserId, { useMasterKey: true });
-      topList.push({
-        avatar: betUser.get("avatar")?.url() || "",
-        nick: betUser.get("name") || betUser.get("username"),
-        total: winAmount,
-      });
-    }
+    
+    // جلب آخر 10 نتائج
+    const recentResults = await getRecentResults(10);
+    
+    // جلب رهانات المستخدم الحالية
+    const currentBets = await getUserCurrentBets(user.id, currentRound);
+    
+    return {
+      code: 200,
+      message: "Success",
+      data: {
+        countdown: countdown,
+        round: currentRound,
+        gold: user.get("credit") || 0,
+        profit: user.get("gameProfit") || 0,
+        result: winningFruit,
+        resultList: recentResults,
+        select: currentBets,
+        top: topList.slice(0, 3),
+        winGold: userWinGold,
+        avatar: user.get("avatar")?.url() || "",
+        gameStatus: "result_showing"
+      }
+    };
   }
 
   // جلب آخر 10 نتائج
-  const resultsQuery = new Parse.Query(FerrisWheelResults);
-  resultsQuery.descending("round");
-  resultsQuery.limit(10);
-  const recentResults = await resultsQuery.find({ useMasterKey: true });
-  const resultList = recentResults.map(r => r.get("result"));
-
-  // جلب رهانات المستخدم الحالية
-  const currentBetsQuery = new Parse.Query(FerrisWheelChoices);
-  currentBetsQuery.equalTo("userId", userId);
-  currentBetsQuery.equalTo("round", currentRound);
-  const currentBets = await currentBetsQuery.find({ useMasterKey: true });
-
-  const selectMap = {};
-  for (const bet of currentBets) {
-    selectMap[bet.get("choice")] = bet.get("gold");
-  }
-
-  // حساب أرباح المستخدم من الجولة السابقة
-  let winGold = 0;
-  let userAvatar = user.get("avatar")?.url() || "";
+  const recentResults = await getRecentResults(10);
   
-  if (previousWinningFruit) {
-    const userWinQuery = new Parse.Query(FerrisWheelChoices);
-    userWinQuery.equalTo("userId", userId);
-    userWinQuery.equalTo("round", currentRound - 1);
-    userWinQuery.equalTo("choice", previousWinningFruit);
-    const userWinBet = await userWinQuery.first({ useMasterKey: true });
-    
-    if (userWinBet) {
-      winGold = Math.floor(userWinBet.get("gold") * FRUIT_MULTIPLIERS[previousWinningFruit]);
+  // جلب رهانات المستخدم الحالية
+  const currentBets = await getUserCurrentBets(user.id, currentRound);
+  
+  // جلب نتيجة الجولة السابقة
+  let previousResult = null;
+  if (currentRound > 0) {
+    const prevResultQuery = new Parse.Query("FerrisWheelResults");
+    prevResultQuery.equalTo("round", currentRound - 1);
+    const prevResult = await prevResultQuery.first({ useMasterKey: true });
+    if (prevResult) {
+      previousResult = prevResult.get("result");
     }
   }
-
-  // تحديث رصيد المستخدم بعد التغييرات المحتملة
-  await user.fetch({ useMasterKey: true });
 
   return {
     code: 200,
@@ -467,15 +453,125 @@ Parse.Cloud.define("game_info", async (request) => {
       round: currentRound,
       gold: user.get("credit") || 0,
       profit: user.get("gameProfit") || 0,
-      result: previousWinningFruit,
-      resultList: resultList,
-      select: selectMap,
-      top: topList.slice(0, 3),
-      winGold: winGold,
-      avatar: userAvatar,
+      result: previousResult,
+      resultList: recentResults,
+      select: currentBets,
+      top: [],
+      winGold: 0,
+      avatar: user.get("avatar")?.url() || "",
+      gameStatus: gameStatus
     }
   };
 });
+
+// دالة مساعدة: جلب النتائج الحديثة
+async function getRecentResults(limit = 10) {
+  const FerrisWheelResults = Parse.Object.extend("FerrisWheelResults");
+  const query = new Parse.Query(FerrisWheelResults);
+  query.descending("round");
+  query.limit(limit);
+  const results = await query.find({ useMasterKey: true });
+  return results.map(r => r.get("result"));
+}
+
+// دالة مساعدة: جلب رهانات المستخدم الحالية
+async function getUserCurrentBets(userId, round) {
+  const FerrisWheelChoices = Parse.Object.extend("FerrisWheelChoices");
+  const query = new Parse.Query(FerrisWheelChoices);
+  query.equalTo("userId", userId);
+  query.equalTo("round", round);
+  const bets = await query.find({ useMasterKey: true });
+  
+  const betMap = {};
+  for (const bet of bets) {
+    betMap[bet.get("choice")] = bet.get("gold");
+  }
+  return betMap;
+}
+
+//////////////////////////////////////////////////////////
+// إنشاء نتيجة الجولة (تعمل تلقائياً)
+//////////////////////////////////////////////////////////
+async function generateRoundResult(roundNumber) {
+  try {
+    const FerrisWheelResults = Parse.Object.extend("FerrisWheelResults");
+    const FerrisWheelChoices = Parse.Object.extend("FerrisWheelChoices");
+    
+    // التحقق من عدم وجود النتيجة بالفعل
+    const existingResult = await new Parse.Query(FerrisWheelResults)
+      .equalTo("round", roundNumber)
+      .first({ useMasterKey: true });
+      
+    if (existingResult) {
+      return existingResult.get("result");
+    }
+    
+    // اختيار فاكهة فائزة عشوائياً
+    const fruits = ['g', 'h', 'a', 'b', 'c', 'd', 'e', 'f'];
+    const winningFruit = fruits[Math.floor(Math.random() * fruits.length)];
+    
+    // حفظ النتيجة
+    const newResult = new FerrisWheelResults();
+    newResult.set("round", roundNumber);
+    newResult.set("result", winningFruit);
+    newResult.set("createdAt", new Date());
+    await newResult.save(null, { useMasterKey: true });
+    
+    console.log(`Generated result for round ${roundNumber}: ${winningFruit}`);
+    
+    // تحديث أرباح الفائزين
+    const winningBets = await new Parse.Query(FerrisWheelChoices)
+      .equalTo("round", roundNumber)
+      .equalTo("choice", winningFruit)
+      .find({ useMasterKey: true });
+      
+    for (const bet of winningBets) {
+      const betUserId = bet.get("userId");
+      const betGold = bet.get("gold") || 0;
+      const winAmount = Math.floor(betGold * (FRUIT_MULTIPLIERS[winningFruit] || 2));
+      
+      try {
+        const betUser = await new Parse.Query(Parse.User).get(betUserId, { useMasterKey: true });
+        if (betUser) {
+          betUser.increment("credit", winAmount);
+          betUser.increment("gameProfit", winAmount);
+          await betUser.save(null, { useMasterKey: true });
+          console.log(`User ${betUserId} won ${winAmount} coins`);
+        }
+      } catch (userError) {
+        console.error(`Error updating user ${betUserId}:`, userError);
+      }
+    }
+    
+    return winningFruit;
+  } catch (error) {
+    console.error(`Error generating result for round ${roundNumber}:`, error);
+    return null;
+  }
+}
+
+// وظيفة تلقائية لتوليد النتائج (كل ثانية)
+setInterval(async () => {
+  try {
+    const currentTime = Math.floor(Date.now() / 1000);
+    const elapsedTime = currentTime - GAME_START_TIMESTAMP;
+    const currentRound = Math.max(0, Math.floor(elapsedTime / ROUND_DURATION));
+    const previousRound = currentRound - 1;
+    
+    // توليد نتيجة الجولة السابقة إذا لم تكن موجودة
+    if (previousRound >= 0) {
+      const existingResult = await new Parse.Query("FerrisWheelResults")
+        .equalTo("round", previousRound)
+        .first({ useMasterKey: true });
+        
+      if (!existingResult) {
+        await generateRoundResult(previousRound);
+      }
+    }
+  } catch (error) {
+    console.error("Auto result generation error:", error);
+  }
+}, 1000); // كل ثانية
 
 //////////////////////////////////////////////////////////
 // وضع رهان في اللعبة
@@ -494,9 +590,19 @@ Parse.Cloud.define("game_choice", async (request) => {
     return { code: 400, message: "Invalid input data" };
   }
 
-  // حساب الجولة الحالية
+  // حساب الجولة الحالية (من السيرفر)
   const currentTime = Math.floor(Date.now() / 1000);
-  const currentRound = Math.floor(currentTime / ROUND_DURATION);
+  const currentRound = Math.max(0, Math.floor((currentTime - GAME_START_TIMESTAMP) / ROUND_DURATION));
+  
+  // حساب الوقت المتبقي للجولة
+  const roundStartTime = GAME_START_TIMESTAMP + (currentRound * ROUND_DURATION);
+  const roundEndTime = roundStartTime + ROUND_DURATION;
+  const countdown = roundEndTime - currentTime;
+  
+  // إذا انتهت الجولة، لا يمكن وضع رهان
+  if (countdown <= 0) {
+    return { code: 400, message: "Round has ended" };
+  }
 
   // التحقق من رصيد المستخدم
   await user.fetch({ useMasterKey: true });
@@ -529,6 +635,7 @@ Parse.Cloud.define("game_choice", async (request) => {
     newBet.set("round", currentRound);
     newBet.set("choice", choice);
     newBet.set("gold", gold);
+    newBet.set("createdAt", new Date());
     await newBet.save(null, { useMasterKey: true });
   }
 
