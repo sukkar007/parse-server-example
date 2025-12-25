@@ -1,5 +1,6 @@
 
-const OneSignal = require('@onesignal/node-onesignal');
+import OneSignal from '@onesignal/node-onesignal';
+
 import Parse from 'parse/node.js';
 
 // OneSignal config
