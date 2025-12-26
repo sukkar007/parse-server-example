@@ -335,7 +335,7 @@ const FerrisWheelChoices = Parse.Object.extend("FerrisWheelChoices");
 const FerrisWheelResults = Parse.Object.extend("FerrisWheelResults");
 
 // إعدادات اللعبة
-const ROUND_DURATION = 30; // مدة الجولة بالثواني
+const ROUND_DURATION = 45; // مدة الجولة بالثواني
 const FRUIT_MULTIPLIERS = {
     'g': 45,
     'h': 5,
