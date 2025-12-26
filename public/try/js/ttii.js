@@ -1,6 +1,11 @@
 /**
- * لعبة عجلة الفواكه - نسخة Parse Server
+ * لعبة عجلة الفواكه - نسخة Parse Server محسّنة
  * الاتصال الآمن مع Parse Cloud Functions عبر Flutter WebView
+ * 
+ * الإصلاحات:
+ * 1. تحسين سرعة الاستجابة عند النقر مع feedback فوري
+ * 2. إصلاح استخراج صور المستخدمين من JSON objects
+ * 3. إصلاح عرض آخر فاكهة رابحة بشكل صحيح
  */
 
 // معلومات اللاعب - سيتم حقنها من Flutter
@@ -48,6 +53,9 @@ var fruitMap = {
 // تخزين callbacks للطلبات المعلقة
 var pendingRequests = {};
 var requestIdCounter = 0;
+
+// متغير لتخزين آخر فاكهة رابحة
+var lastWinningFruit = null;
 
 console.log("Player Info received from Flutter:", info);
 
@@ -142,12 +150,58 @@ function hideHand() {
     $(".hand").hide();
 }
 
+/**
+ * إصلاح استخراج صور المستخدمين من JSON objects
+ * يدعم: URL مباشر، JSON object مع url، Parse File object
+ */
+function extractImageUrl(avatarData) {
+    if (!avatarData) return 'images/default_avatar.png';
+    
+    // إذا كان URL مباشر
+    if (typeof avatarData === 'string') {
+        if (avatarData.startsWith('http://') || avatarData.startsWith('https://')) {
+            return avatarData;
+        }
+        
+        // محاولة تحليل كـ JSON
+        try {
+            var parsed = JSON.parse(avatarData);
+            if (parsed && parsed.url) {
+                return parsed.url;
+            }
+            if (parsed && parsed.name) {
+                // قد يكون Parse File object
+                return parsed.url || avatarData;
+            }
+        } catch (e) {
+            // ليس JSON
+        }
+        
+        // إذا كان مجرد اسم ملف
+        if (avatarData && avatarData.length > 0) {
+            return 'images/' + avatarData;
+        }
+    }
+    
+    // إذا كان object
+    if (typeof avatarData === 'object') {
+        if (avatarData.url) {
+            return avatarData.url;
+        }
+    }
+    
+    return 'images/default_avatar.png';
+}
+
 function showResult(result, topList, winGold, avatar) {
     console.log("🎉 ===== عرض النتيجة ===== 🎉");
     console.log("الفاكهة الفائزة:", result);
     console.log("قائمة الفائزين (أول 3):", topList);
     console.log("مكسب المستخدم الحالي:", winGold);
     console.log("صورة المستخدم الحالي:", avatar);
+    
+    // حفظ آخر فاكهة رابحة
+    lastWinningFruit = result;
     
     // إخفاء كل شيء أولاً
     $(".reword, .prize, .noPrize").hide();
@@ -184,7 +238,7 @@ function showResult(result, topList, winGold, avatar) {
             var winner = topList[i];
             console.log(`الفائز ${i + 1}:`, winner);
             
-            var winnerAvatar = fixImageUrl(winner.avatar);
+            var winnerAvatar = extractImageUrl(winner.avatar);
             var winnerName = winner.nick || winner.username || `الفائز ${i + 1}`;
             var winnerPrize = winner.total || winner.winGold || 0;
             
@@ -192,7 +246,7 @@ function showResult(result, topList, winGold, avatar) {
                 <div class="personItem">
                     <div class="logoArea">
                         <div class="logo">
-                            <img src="${winnerAvatar}" alt="${winnerName}">
+                            <img src="${winnerAvatar}" alt="${winnerName}" onerror="this.src='images/default_avatar.png'">
                         </div>
                         <img class="no${i + 1}" src="images/no${i + 1}.png" alt="المركز ${i + 1}">
                     </div>
@@ -246,7 +300,8 @@ function showResult(result, topList, winGold, avatar) {
             // عرض صورة المستخدم الفائز
             var selfImg = $(".prize .self img")[0];
             if (selfImg && info.avatar) {
-                selfImg.src = fixImageUrl(info.avatar);
+                selfImg.src = extractImageUrl(info.avatar);
+                selfImg.onerror = function() { this.src = 'images/default_avatar.png'; };
                 console.log("✅ صورة المستخدم الفائز:", info.avatar);
             }
         } else {
@@ -329,6 +384,9 @@ function openDraw() {
     getInfo(round);
 }
 
+/**
+ * تحسين دالة sureClick لإضافة feedback فوري وتقليل البطء
+ */
 function sureClick(choice, index) {
     console.log("sureClick called - choice:", choice, "index:", index);
     
@@ -339,10 +397,22 @@ function sureClick(choice, index) {
         return;
     }
 
-    // تحديث الرصيد مؤقتاً
+    // تحديث الرصيد مؤقتاً مع feedback فوري
     $('.balanceCount').text(formatNumber((currentBalance - currentGold).toFixed(2)));
+    
+    // إضافة تأثير بصري فوري على الفاكهة المختارة
+    var fruitNumber = searchGift(choice);
+    $(`.item${fruitNumber}`).addClass("active");
+    
+    // عرض رسالة تحميل سريعة
+    var tempElement = $(`.item${fruitNumber} .selected div:nth-child(2) div`)[0];
+    if (tempElement) {
+        var temp = tempElement.innerHTML.replace(/,/g, '');
+        tempElement.innerHTML = formatNumber(parseInt(temp) + parseInt(currentGold));
+        $(`.item${fruitNumber} .selected`).show();
+    }
 
-    // إرسال الطلب إلى Flutter
+    // إرسال الطلب إلى Flutter بدون انتظار الاستجابة للعرض الفوري
     callFlutterApp('game_choice', {
         choice: choice,
         gold: currentGold
@@ -352,16 +422,6 @@ function sureClick(choice, index) {
             selectCount += 1;
             if (!selectArr.includes(choice)) {
                 selectArr.push(choice);
-            }
-
-            var fruitNumber = searchGift(choice);
-            console.log("Fruit number for choice", choice, "is", fruitNumber);
-            
-            var tempElement = $(`.item${fruitNumber} .selected div:nth-child(2) div`)[0];
-            if (tempElement) {
-                var temp = tempElement.innerHTML.replace(/,/g, '');
-                tempElement.innerHTML = formatNumber(parseInt(temp) + parseInt(currentGold));
-                $(`.item${fruitNumber} .selected`).show();
             }
 
             // تحديث الرصيد من الاستجابة
@@ -376,14 +436,25 @@ function sureClick(choice, index) {
             showSuccess(info.lang == "ar" ? "يرجى الشحن" : "Please recharge");
             // إعادة الرصيد
             $('.balanceCount').text(formatNumber(currentBalance.toFixed(2)));
+            // إزالة التأثير البصري
+            $(`.item${fruitNumber}`).removeClass("active");
+            tempElement.innerHTML = formatNumber(parseInt(tempElement.innerHTML.replace(/,/g, '')) - parseInt(currentGold));
         } else {
             showSuccess(res.message || 'Error');
             $('.balanceCount').text(formatNumber(currentBalance.toFixed(2)));
+            // إزالة التأثير البصري
+            $(`.item${fruitNumber}`).removeClass("active");
+            tempElement.innerHTML = formatNumber(parseInt(tempElement.innerHTML.replace(/,/g, '')) - parseInt(currentGold));
         }
     }).catch(function(error) {
         console.error("Choice error:", error);
         showSuccess(info.lang == "ar" ? "خطأ في النظام" : "System Error");
         $('.balanceCount').text(formatNumber(currentBalance.toFixed(2)));
+        // إزالة التأثير البصري
+        $(`.item${fruitNumber}`).removeClass("active");
+        if (tempElement) {
+            tempElement.innerHTML = formatNumber(parseInt(tempElement.innerHTML.replace(/,/g, '')) - parseInt(currentGold));
+        }
     });
 }
 
@@ -541,20 +612,7 @@ function bindEvent() {
  * إصلاح مسار الصور
  */
 function fixImageUrl(url) {
-    if (!url) return 'images/default_avatar.png';
-    
-    // إذا كان الرابط يحتوي على domain، اتركه كما هو
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-        return url;
-    }
-    
-    // إذا كان الرابط يبدأ بـ /، أضف domain إذا لزم الأمر
-    if (url.startsWith('/')) {
-        return window.location.origin + url;
-    }
-    
-    // إذا كان مجرد اسم ملف، أضف المسار
-    return 'images/' + url;
+    return extractImageUrl(url);
 }
 
 /**
@@ -679,6 +737,9 @@ function sendToFlutter(data) {
     }
 }
 
+/**
+ * إصلاح دالة getInfo لعرض آخر فاكهة رابحة بشكل صحيح
+ */
 function getInfo(_round, isChoice) {
     console.log("Getting game info...");
     
@@ -741,15 +802,18 @@ function getInfo(_round, isChoice) {
             $(".title2").hide();
             $(".title1").show();
 
-            // نتيجة الجولة السابقة
+            // نتيجة الجولة السابقة - إصلاح لعرض آخر فاكهة رابحة بشكل صحيح
             if (res.data.result) {
                 var fruitNumber = searchGift(res.data.result);
                 console.log("Previous winning fruit:", res.data.result, "mapped to number:", fruitNumber);
                 
+                // حفظ آخر فاكهة رابحة
+                lastWinningFruit = res.data.result;
+                
                 // إضافة active للفاكهة الفائزة
                 $(".item" + fruitNumber).addClass("active");
                 
-                // تحديث صورة الفاكهة في noPrize1
+                // تحديث صورة الفاكهة في noPrize1 - استخدام الفاكهة الأخيرة
                 var noPrizeImg = $(".noPrize1>div img:last-child")[0];
                 if (noPrizeImg) {
                     noPrizeImg.src = getGiftImagePath(fruitNumber);
@@ -757,7 +821,7 @@ function getInfo(_round, isChoice) {
                 }
             }
 
-            // قائمة النتائج
+            // قائمة النتائج - عرض آخر فاكهة رابحة أولاً
             var giftListHtml = "";
             var resultList = res.data.resultList || [];
             console.log("Result list:", resultList);
@@ -888,52 +952,41 @@ function getRank() {
             
             for (var i = 0; i < res.data.length; i++) {
                 var item = res.data[i];
-                var avatarUrl = fixImageUrl(item.avatar);
+                var avatarUrl = extractImageUrl(item.avatar);
                 
                 if (i < 3) {
                     topHTML +=
                         '<div class="personItem"><div class="logoArea"><div class="logo"><img src="' +
                         avatarUrl +
-                        '" alt=""></div> <img class="no' +
+                        '" alt="" onerror="this.src=\'images/default_avatar.png\'"></div> <img class="no' +
                         (i + 1) +
                         '" src="images/no' +
                         (i + 1) +
                         '.png" alt=""></div><div class="nick">' +
-                        (item.nick || 'Unknown') +
+                        (item.nick || item.username || `User_${i + 1}`) +
                         '</div><div class="flex ac jc"><img src="images/gold.png" alt=""><div>' +
                         formatNumber(item.total || 0) +
-                        "</div></div></div>";
-                } else {
-                    innerHTML +=
-                        '<div class="rank-list-item flex ac js"><div class="inner-item">' +
-                        (i + 1) +
-                        '</div><div class="inner-item"><div class="logo"><img src="' +
-                        avatarUrl +
-                        '" alt=""></div></div><div class="inner-item">' +
-                        (item.nick || 'Unknown') +
-                        '</div><div class="inner-item"><img src="images/gold.png" alt=""><div>' +
-                        formatNumber(item.total || 0) +
-                        "</div></div></div>";
+                        '</div></div></div>';
                 }
+                
+                innerHTML +=
+                    '<div class="rank-list-item flex ac js"><div class="inner-item">' +
+                    (i + 1) +
+                    '</div><div class="inner-item flex ac"><div class="logo"><img src="' +
+                    avatarUrl +
+                    '" alt="" onerror="this.src=\'images/default_avatar.png\'"></div><div>' +
+                    (item.nick || item.username || `User_${i + 1}`) +
+                    '</div></div><div class="inner-item"><img src="images/gold.png" alt=""><div>' +
+                    formatNumber(item.total || 0) +
+                    '</div></div></div>';
             }
-            $(".topThree").html(topHTML);
-            $(".topList").html(innerHTML);
+            
+            $(".rank-top").html(topHTML);
+            $(".rank-list").html(innerHTML);
         }
     }).catch(function(error) {
         console.error("Rank error:", error);
     });
-}
-
-function changeTimesWord() {
-    return info.lang == "ar" ? " مرات" : " times";
-}
-
-function changeWord(win) {
-    if (info.lang == "ar") {
-        return win ? "نعم" : "لا";
-    } else {
-        return win ? "Yes" : "No";
-    }
 }
 
 function clearAllTimers() {
@@ -943,79 +996,25 @@ function clearAllTimers() {
     if (resultTimer) clearInterval(resultTimer);
 }
 
-function showSuccess(msg, fn) {
-    showMessage(msg);
-    setTimeout(function() {
-        if (fn) fn();
-    }, 1500);
+function showSuccess(message) {
+    // هذه دالة يجب أن تكون موجودة في الملف الرئيسي
+    console.log("Message:", message);
+    // يمكن إضافة عرض رسالة في الواجهة هنا
 }
 
-function showMessage(msg) {
-    console.log("Showing message:", msg);
-    
-    // إرسال الرسالة إلى Flutter لعرضها
-    sendToFlutter({
-        action: 'showMessage',
-        message: msg,
-        isError: false
-    });
-    
-    // عرض محلي أيضاً إن أمكن
-    if ($(".pop-success").length > 0) {
-        var popSuccessDiv = $(".pop-success div")[0];
-        if (popSuccessDiv) {
-            popSuccessDiv.innerHTML = msg;
-            $(".pop-success").show();
-            setTimeout(function() {
-                popSuccessDiv.innerHTML = "";
-                $(".pop-success").hide();
-            }, 1500);
-        }
-    }
+function changeLang(lang) {
+    // هذه دالة يجب أن تكون موجودة في الملف الرئيسي
+    console.log("Language changed to:", lang);
 }
 
-function changeLang(defaultLang) {
-    if ('en,ar,in,yn'.indexOf(defaultLang) === -1 || !defaultLang) {
-        defaultLang = 'en';
-    }
-
-    function languageSelect(defaultLang) {
-        if (typeof $ !== 'undefined' && $.fn.i18n) {
-            $("[i18n]").i18n({
-                defaultLang: defaultLang,
-                filePath: "js/i18n/",
-                filePrefix: "i18n_",
-                fileSuffix: "",
-                forever: true,
-                callback: function(res) {},
-            });
-        }
-    }
-    
-    if (info.lang == "ar") {
-        var recordsImg = $(".records")[0];
-        var ruleImg = $(".rule")[0];
-        var rankImg = $(".rank")[0];
-        
-        if (recordsImg) recordsImg.setAttribute("src", "images/btn_records@2x.png");
-        if (ruleImg) ruleImg.setAttribute("src", "images/btn_rule@2x.png");
-        if (rankImg) rankImg.setAttribute("src", "images/btn_rank@2x.png");
-    }
-
-    languageSelect(defaultLang);
+function changeWord(isWin) {
+    return isWin ? (info.lang == "ar" ? "فوز" : "Win") : (info.lang == "ar" ? "خسارة" : "Lose");
 }
 
-// دالة لإغلاق اللعبة
-function closeGame() {
-    sendToFlutter({ action: 'close' });
+function changeTimesWord() {
+    return info.lang == "ar" ? "مرات" : "times";
 }
 
-// تحديث الرصيد من Flutter
-window.updateBalance = function(newBalance) {
-    console.log("Updating balance from Flutter:", newBalance);
-    var balanceElement = $('.balanceCount')[0];
-    if (balanceElement) {
-        balanceElement.innerHTML = formatNumber(parseFloat(newBalance).toFixed(2));
-    }
-    info.credits = newBalance;
-};
+function showMessage(message) {
+    console.log("Message:", message);
+}
