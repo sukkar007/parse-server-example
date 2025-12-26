@@ -33,7 +33,7 @@ var status = 0; // 0 يمكن النقر, 1 جاري السحب, 2 تم السح
 var currentGold = 1;
 var hideLock = false;
 
-// خريطة الفواكه
+// خريطة الفواكه - هذا مهم!
 var fruitMap = {
     'g': 6,
     'h': 7,
@@ -48,10 +48,6 @@ var fruitMap = {
 // تخزين callbacks للطلبات المعلقة
 var pendingRequests = {};
 var requestIdCounter = 0;
-
-// قائمة الانتظار للرهانات - لمعالجة الطلبات المتزامنة
-var betQueue = [];
-var isProcessingBet = false;
 
 console.log("Player Info received from Flutter:", info);
 
@@ -333,124 +329,62 @@ function openDraw() {
     getInfo(round);
 }
 
-function quickBet(choice, index) {
-    console.log("⚡ الرهان السريع - choice:", choice, "index:", index);
+function sureClick(choice, index) {
+    console.log("sureClick called - choice:", choice, "index:", index);
     
-    // التحقق من الرصيد بسرعة
+    // التحقق من الرصيد
     let currentBalance = parseFloat($('.balanceCount').text().replace(/,/g, ''));
     if (currentBalance < currentGold) {
         showSuccess(info.lang == "ar" ? "رصيد غير كافٍ!" : "Insufficient balance!");
-        return false;
-    }
-    
-    // تحديث الواجهة فوراً (تجربة سريعة)
-    var fruitNumber = searchGift(choice);
-    console.log("رقم الفاكهة للرهان:", fruitNumber);
-    
-    var selectedElement = $(`.item${fruitNumber} .selected div:nth-child(2) div`)[0];
-    if (selectedElement) {
-        var currentAmount = parseFloat(selectedElement.innerHTML.replace(/,/g, '')) || 0;
-        selectedElement.innerHTML = formatNumber(currentAmount + currentGold);
-        $(`.item${fruitNumber} .selected`).show();
-    }
-    
-    // تحديث الرصيد في الواجهة فوراً
-    var newBalance = currentBalance - currentGold;
-    $('.balanceCount').text(formatNumber(newBalance.toFixed(2)));
-    
-    selectCount += 1;
-    if (!selectArr.includes(choice)) {
-        selectArr.push(choice);
-    }
-    
-    return true;
-}
-
-function processBetQueue() {
-    if (isProcessingBet || betQueue.length === 0) {
         return;
     }
-    
-    isProcessingBet = true;
-    var bet = betQueue.shift();
-    
-    console.log("🔄 معالجة الرهان في قائمة الانتظار:", bet);
-    
+
+    // تحديث الرصيد مؤقتاً
+    $('.balanceCount').text(formatNumber((currentBalance - currentGold).toFixed(2)));
+
+    // إرسال الطلب إلى Flutter
     callFlutterApp('game_choice', {
-        choice: bet.choice,
-        gold: bet.gold
+        choice: choice,
+        gold: currentGold
     }).then(function(res) {
-        console.log("✅ استجابة الرهان:", res);
-        
+        console.log("Choice response:", res);
         if (res.code == 200) {
+            selectCount += 1;
+            if (!selectArr.includes(choice)) {
+                selectArr.push(choice);
+            }
+
+            var fruitNumber = searchGift(choice);
+            console.log("Fruit number for choice", choice, "is", fruitNumber);
+            
+            var tempElement = $(`.item${fruitNumber} .selected div:nth-child(2) div`)[0];
+            if (tempElement) {
+                var temp = tempElement.innerHTML.replace(/,/g, '');
+                tempElement.innerHTML = formatNumber(parseInt(temp) + parseInt(currentGold));
+                $(`.item${fruitNumber} .selected`).show();
+            }
+
             // تحديث الرصيد من الاستجابة
             if (res.balance !== undefined) {
                 $('.balanceCount').text(formatNumber(parseFloat(res.balance).toFixed(2)));
-                info.credits = res.balance;
+                // تحديث معلومات اللاعب
+                if (info.credits !== undefined) {
+                    info.credits = res.balance;
+                }
             }
         } else if (res.code == 10062) {
-            console.warn("❌ رصيد غير كافٍ في الخادم");
             showSuccess(info.lang == "ar" ? "يرجى الشحن" : "Please recharge");
-            
-            // إعادة تعيين الرصيد
-            getInfo(round, true);
+            // إعادة الرصيد
+            $('.balanceCount').text(formatNumber(currentBalance.toFixed(2)));
         } else {
-            console.error("❌ خطأ في الرهان:", res.message);
             showSuccess(res.message || 'Error');
-            
-            // إعادة تعيين الرصيد
-            getInfo(round, true);
+            $('.balanceCount').text(formatNumber(currentBalance.toFixed(2)));
         }
-        
-        // معالجة الرهان التالي
-        isProcessingBet = false;
-        setTimeout(processBetQueue, 100);
-        
     }).catch(function(error) {
-        console.error("❌ خطأ في اتصال الرهان:", error);
-        showSuccess(info.lang == "ar" ? "خطأ في الاتصال" : "Connection Error");
-        
-        // معالجة الرهان التالي
-        isProcessingBet = false;
-        setTimeout(processBetQueue, 100);
+        console.error("Choice error:", error);
+        showSuccess(info.lang == "ar" ? "خطأ في النظام" : "System Error");
+        $('.balanceCount').text(formatNumber(currentBalance.toFixed(2)));
     });
-}
-
-function sureClick(choice, index) {
-    console.log("🎯 sureClick called - choice:", choice, "index:", index);
-    
-    // التحقق من حالة اللعبة
-    if (status !== 0) {
-        console.log("❌ اللعبة ليست جاهزة للرهان، status:", status);
-        return;
-    }
-    
-    // التحقق من الرصيد بسرعة
-    let currentBalance = parseFloat($('.balanceCount').text().replace(/,/g, ''));
-    if (currentBalance < currentGold) {
-        showSuccess(info.lang == "ar" ? "رصيد غير كافٍ!" : "Insufficient balance!");
-        return;
-    }
-    
-    // تحديث الواجهة فوراً
-    var uiSuccess = quickBet(choice, index);
-    if (!uiSuccess) {
-        return;
-    }
-    
-    // إضافة الرهان إلى قائمة الانتظار
-    betQueue.push({
-        choice: choice,
-        gold: currentGold,
-        timestamp: Date.now()
-    });
-    
-    console.log("📝 تمت إضافة الرهان إلى قائمة الانتظار، الطول:", betQueue.length);
-    
-    // بدء معالجة قائمة الانتظار إذا لم تكن قيد المعالجة
-    if (!isProcessingBet) {
-        processBetQueue();
-    }
 }
 
 function roll(dir) {
@@ -514,19 +448,9 @@ function bindEvent() {
         console.log("Selected gold:", currentGold);
     });
     
-    // أحداث النقر على الفواكه - مع تحسين الأداء
-    var lastClickTime = 0;
-    var clickCooldown = 300; // 300ms بين النقرات
-    
+    // أحداث النقر على الفواكه - نفس طريقة ttii.js الأصلية
     $(".item").click(function() {
-        var now = Date.now();
-        if (now - lastClickTime < clickCooldown) {
-            console.log("⏳ انتظر قليلاً بين النقرات");
-            return;
-        }
-        lastClickTime = now;
-        
-        console.log("🍎 Fruit item clicked, status:", status);
+        console.log("Fruit item clicked, status:", status);
         if (status == 0) {
             var index = $(this).data("index");
             console.log("Item index:", index);
@@ -664,7 +588,7 @@ function formatNumber(num) {
 }
 
 /**
- * البحث عن رقم الفاكهة من الحرف
+ * البحث عن رقم الفاكهة من الحرف - محسنة!
  */
 function searchGift(value) {
     if (!value) {
@@ -672,14 +596,17 @@ function searchGift(value) {
         return 1;
     }
     
+    console.log("searchGift searching for:", value);
+    
     // تحقق في الخريطة مباشرة
     var result = fruitMap[value];
     
     if (!result) {
         console.warn("Invalid fruit value:", value, "valid values:", Object.keys(fruitMap));
-        return 1;
+        return 1; // قيمة افتراضية
     }
     
+    console.log("Mapped fruit", value, "to number:", result);
     return result;
 }
 
@@ -703,7 +630,7 @@ function callFlutterApp(action, params) {
             params: params || {}
         };
         
-        console.log("📤 إرسال إلى Flutter:", message);
+        console.log("Sending to Flutter:", message);
         
         // إرسال عبر JavaScript Channel
         if (window.FlamingoApp && typeof window.FlamingoApp.postMessage === 'function') {
@@ -725,15 +652,13 @@ function callFlutterApp(action, params) {
             }
         }
         
-        // Timeout بعد 10 ثوانٍ فقط للرهانات
-        var timeout = action === 'game_choice' ? 10000 : 30000;
-        
+        // Timeout بعد 30 ثانية
         setTimeout(function() {
             if (pendingRequests[requestId]) {
                 delete pendingRequests[requestId];
                 reject('Request timeout');
             }
-        }, timeout);
+        }, 30000);
     });
 }
 
@@ -923,7 +848,7 @@ function getBill() {
                 var tempItem = res.data[i];
                 var isWin = tempItem.choice == tempItem.result;
                 var choiceNumber = searchGift(tempItem.choice);
-                var resultNumber = searchGift(tempItem.result || 'b');
+                var resultNumber = searchGift(tempItem.result || 'b'); // افتراضي إذا لم تكن هناك نتيجة
                 
                 innerHTML +=
                     '<div class="records-list-item flex ac js"><div class="inner-item">' +
@@ -1093,18 +1018,4 @@ window.updateBalance = function(newBalance) {
         balanceElement.innerHTML = formatNumber(parseFloat(newBalance).toFixed(2));
     }
     info.credits = newBalance;
-};
-
-// دالة مساعدة للفحص
-window.debugGame = function() {
-    console.log("=== GAME DEBUG INFO ===");
-    console.log("info:", info);
-    console.log("round:", round);
-    console.log("status:", status);
-    console.log("currentGold:", currentGold);
-    console.log("selectArr:", selectArr);
-    console.log("selectCount:", selectCount);
-    console.log("betQueue length:", betQueue.length);
-    console.log("isProcessingBet:", isProcessingBet);
-    console.log("=== END DEBUG ===");
 };
