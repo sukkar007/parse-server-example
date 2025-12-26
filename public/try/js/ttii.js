@@ -1,17 +1,17 @@
 /**
  * لعبة عجلة الفواكه - نسخة Parse Server
- * الاتصال الآمن مع Parse Cloud Functions
+ * الاتصال الآمن مع Parse Cloud Functions عبر Flutter WebView
  */
 
-// معلومات اللاعب
-var info = {
+// معلومات اللاعب - سيتم حقنها من Flutter
+var info = window.flamingoPlayerInfo || {
     uid: '',
-    token: '',
-    lang: 'en',
+    username: '',
     nickname: '',
     avatar: '',
     credits: 0,
-    diamonds: 0
+    diamonds: 0,
+    lang: 'en'
 };
 
 // إعدادات اللعبة
@@ -33,73 +33,68 @@ var status = 0; // 0 يمكن النقر, 1 جاري السحب, 2 تم السح
 var currentGold = 1;
 var hideLock = false;
 
-// تحقق من بيئة التطبيق
-var env = (function() {
-    var ua = navigator.userAgent;
-    var testProd = ['127.0.0.1', 'localhost'];
-    var isProd = !testProd.some(function(item) {
-        return window.location.host.indexOf(item) > -1;
-    });
-    
-    return {
-        isProd,
-        ios: !!ua.match(/\(i[^;]+;( U;)? CPU.+Mac OS X/),
-        android: ua.indexOf('Android') > -1 || ua.indexOf('Adr') > -1,
-        app: window.Parse && window.Parse.User.current() ? true : false
-    };
-})();
+// تخزين callbacks للطلبات المعلقة
+var pendingRequests = {};
+var requestIdCounter = 0;
 
-// استلام معلومات اللاعب من Parse
-function getParseUserInfo() {
-    var currentUser = Parse.User.current();
-    if (currentUser) {
-        info.uid = currentUser.id;
-        info.token = currentUser.getSessionToken();
-        info.nickname = currentUser.get('name') || currentUser.get('username');
-        info.avatar = currentUser.get('avatar') ? currentUser.get('avatar').url() : '';
-        info.credits = currentUser.get('credit') || 0;
-        info.diamonds = currentUser.get('diamonds') || 0;
-        
-        // إعادة تعيين اللغة
-        var userLang = currentUser.get('language') || 'en';
-        info.lang = ['en', 'ar', 'in', 'yn'].includes(userLang) ? userLang : 'en';
-        
-        console.log("Parse User Info:", info);
-        return true;
-    }
-    return false;
+console.log("Player Info received from Flutter:", info);
+
+// استلام معلومات اللاعب من Flutter
+if (window.flamingoPlayerInfo) {
+    console.log("Player info received on load:", info);
+    init();
 }
+
+// استقبال تحديثات معلومات اللاعب من Flutter
+window.onFlamingoPlayerInfo = function(playerInfo) {
+    info = playerInfo;
+    console.log("Player info updated:", info);
+    
+    // تحديث الرصيد في الواجهة
+    $(".balanceCount").text(parseFloat(info.credits).toFixed(2));
+};
+
+// استقبال الاستجابات من Flutter
+window.onFlamingoResponse = function(response) {
+    console.log("Received response from Flutter:", response);
+    
+    var requestId = response.requestId;
+    if (requestId && pendingRequests[requestId]) {
+        var callback = pendingRequests[requestId];
+        delete pendingRequests[requestId];
+        
+        if (response.success) {
+            callback.resolve(response.data);
+        } else {
+            callback.reject(response.error || 'Unknown error');
+        }
+    }
+};
 
 // تهيئة التطبيق
 $(document).ready(function() {
-    console.log("Document ready - Parse Version");
+    console.log("Document ready - Flutter WebView Version");
     
-    // تهيئة Parse
-    if (window.Parse) {
-        Parse.initialize("YOUR_APP_ID", "YOUR_JAVASCRIPT_KEY");
-        Parse.serverURL = "YOUR_PARSE_SERVER_URL";
-        
-        // تحقق من حالة تسجيل الدخول
-        if (getParseUserInfo()) {
-            init();
-        } else {
-            // إذا لم يكن المستخدم مسجل الدخول
-            console.error("User not logged in");
-            showSuccess("Please login first");
-            
-            // إعادة التوجيه إلى صفحة تسجيل الدخول بعد 2 ثانية
-            setTimeout(function() {
-                window.location.href = "/login.html";
-            }, 2000);
-        }
+    // انتظار معلومات اللاعب من Flutter
+    if (window.flamingoPlayerInfo) {
+        init();
     } else {
-        console.error("Parse SDK not loaded");
+        // انتظار قصير ثم المحاولة
+        setTimeout(function() {
+            if (window.flamingoPlayerInfo) {
+                init();
+            } else {
+                showMessage("Waiting for player info...");
+            }
+        }, 1000);
     }
 });
 
 function init() {
-    console.log("Initializing game with Parse...");
-    moment.tz.setDefault("Asia/Riyadh");
+    console.log("Initializing game...");
+    if (typeof moment !== 'undefined') {
+        moment.tz.setDefault("Asia/Riyadh");
+    }
     changeLang(info.lang);
     showHand();
     bindEvent();
@@ -219,8 +214,8 @@ function sureClick(choice, index) {
     // تحديث الرصيد مؤقتاً
     $('.balanceCount').text((currentBalance - currentGold).toFixed(2));
 
-    // إرسال الطلب إلى Parse Cloud Function
-    Parse.Cloud.run('game_choice', {
+    // إرسال الطلب إلى Flutter
+    callFlutterApp('game_choice', {
         choice: choice,
         gold: currentGold
     }).then(function(res) {
@@ -240,7 +235,10 @@ function sureClick(choice, index) {
             // تحديث الرصيد من الاستجابة
             if (res.balance !== undefined) {
                 $('.balanceCount').text(parseFloat(res.balance).toFixed(2));
-                updateUserBalance(res.balance);
+                // تحديث معلومات اللاعب
+                if (info.credits !== undefined) {
+                    info.credits = res.balance;
+                }
             }
         } else if (res.code == 10062) {
             showSuccess(info.lang == "ar" ? "يرجى الشحن" : "Please recharge");
@@ -255,19 +253,6 @@ function sureClick(choice, index) {
         showSuccess(info.lang == "ar" ? "خطأ في النظام" : "System Error");
         $('.balanceCount').text(currentBalance.toFixed(2));
     });
-}
-
-// تحديث رصيد المستخدم في Parse
-function updateUserBalance(newBalance) {
-    var currentUser = Parse.User.current();
-    if (currentUser) {
-        currentUser.set('credit', newBalance);
-        currentUser.save().then(function() {
-            console.log("User balance updated to:", newBalance);
-        }).catch(function(error) {
-            console.error("Failed to update user balance:", error);
-        });
-    }
 }
 
 function roll(dir) {
@@ -388,15 +373,78 @@ function bindEvent() {
     }
 }
 
+/**
+ * دالة للاتصال بـ Flutter
+ */
+function callFlutterApp(action, params) {
+    return new Promise(function(resolve, reject) {
+        var requestId = 'req_' + (++requestIdCounter) + '_' + Date.now();
+        
+        // تخزين callback
+        pendingRequests[requestId] = {
+            resolve: resolve,
+            reject: reject
+        };
+        
+        // إرسال الطلب إلى Flutter
+        var message = {
+            action: action,
+            requestId: requestId,
+            params: params || {}
+        };
+        
+        console.log("Sending to Flutter:", message);
+        
+        // إرسال عبر JavaScript Channel
+        if (window.FlamingoApp && typeof window.FlamingoApp.postMessage === 'function') {
+            window.FlamingoApp.postMessage(JSON.stringify(message));
+        } else if (window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
+            // دعم InAppWebView
+            window.flutter_inappwebview.callHandler('FlamingoApp', JSON.stringify(message));
+        } else {
+            console.warn("FlamingoApp not available, trying direct call");
+            // محاولة مباشرة
+            try {
+                window.flutterChannel.postMessage(JSON.stringify(message));
+            } catch (e) {
+                reject('Cannot communicate with Flutter: ' + e);
+            }
+        }
+        
+        // Timeout بعد 30 ثانية
+        setTimeout(function() {
+            if (pendingRequests[requestId]) {
+                delete pendingRequests[requestId];
+                reject('Request timeout');
+            }
+        }, 30000);
+    });
+}
+
+/**
+ * إرسال رسالة بسيطة إلى Flutter
+ */
+function sendToFlutter(data) {
+    try {
+        if (window.FlamingoApp && typeof window.FlamingoApp.postMessage === 'function') {
+            window.FlamingoApp.postMessage(JSON.stringify(data));
+        } else if (window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
+            window.flutter_inappwebview.callHandler('FlamingoApp', JSON.stringify(data));
+        }
+    } catch (e) {
+        console.error("Failed to send to Flutter:", e);
+    }
+}
+
 function getInfo(_round, isChoice) {
-    console.log("Getting game info from Parse...");
+    console.log("Getting game info...");
     
     var params = {};
     if (_round) {
         params.round = _round;
     }
     
-    Parse.Cloud.run('game_info', params).then(function(res) {
+    callFlutterApp('game_info', params).then(function(res) {
         console.log("Info response:", res);
         if (res.code === 200 && res.data) {
             if (res.data.countdown && res.data.countdown < 0) {
@@ -512,7 +560,7 @@ function getInfo(_round, isChoice) {
 }
 
 function getBill() {
-    Parse.Cloud.run('game_bill', {}).then(function(res) {
+    callFlutterApp('game_bill', {}).then(function(res) {
         console.log("Bill response:", res);
         if (res.code == 200 && res.data) {
             var innerHTML = "";
@@ -551,7 +599,7 @@ function getBill() {
 }
 
 function getRank() {
-    Parse.Cloud.run('game_rank', {}).then(function(res) {
+    callFlutterApp('game_rank', {}).then(function(res) {
         console.log("Rank response:", res);
         if (res.code == 200 && res.data) {
             var innerHTML = "";
@@ -627,13 +675,29 @@ function clearAllTimers() {
 }
 
 function showSuccess(msg, fn) {
-    $(".pop-success div")[0].innerHTML = msg;
-    $(".pop-success").show();
+    showMessage(msg);
     setTimeout(function() {
-        $(".pop-success div")[0].innerHTML = "";
         if (fn) fn();
-        $(".pop-success").hide();
     }, 1500);
+}
+
+function showMessage(msg) {
+    // إرسال الرسالة إلى Flutter لعرضها
+    sendToFlutter({
+        action: 'showMessage',
+        message: msg,
+        isError: false
+    });
+    
+    // عرض محلي أيضاً إن أمكن
+    if ($(".pop-success").length > 0) {
+        $(".pop-success div")[0].innerHTML = msg;
+        $(".pop-success").show();
+        setTimeout(function() {
+            $(".pop-success div")[0].innerHTML = "";
+            $(".pop-success").hide();
+        }, 1500);
+    }
 }
 
 function changeLang(defaultLang) {
@@ -642,14 +706,16 @@ function changeLang(defaultLang) {
     }
 
     function languageSelect(defaultLang) {
-        $("[i18n]").i18n({
-            defaultLang: defaultLang,
-            filePath: "js/i18n/",
-            filePrefix: "i18n_",
-            fileSuffix: "",
-            forever: true,
-            callback: function(res) {},
-        });
+        if (typeof $ !== 'undefined' && $.fn.i18n) {
+            $("[i18n]").i18n({
+                defaultLang: defaultLang,
+                filePath: "js/i18n/",
+                filePrefix: "i18n_",
+                fileSuffix: "",
+                forever: true,
+                callback: function(res) {},
+            });
+        }
     }
     
     if (info.lang == "ar") {
@@ -659,4 +725,15 @@ function changeLang(defaultLang) {
     }
 
     languageSelect(defaultLang);
+}
+
+// دالة لإغلاق اللعبة
+function closeGame() {
+    sendToFlutter({ action: 'close' });
+}
+
+// تحديث الرصيد من Flutter
+function updateBalance(newBalance) {
+    $('.balanceCount').text(parseFloat(newBalance).toFixed(2));
+    info.credits = newBalance;
 }
