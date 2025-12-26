@@ -51,7 +51,9 @@ window.onFlamingoPlayerInfo = function(playerInfo) {
     console.log("Player info updated:", info);
     
     // تحديث الرصيد في الواجهة
-    $(".balanceCount").text(parseFloat(info.credits).toFixed(2));
+    if ($('.balanceCount').length > 0) {
+        $('.balanceCount').text(formatNumber(parseFloat(info.credits).toFixed(2)));
+    }
 };
 
 // استقبال الاستجابات من Flutter
@@ -132,7 +134,7 @@ function showResult(result, topList, winGold, avatar) {
     $(".reword").show();
     if (winGold && winGold > 0) {
         $(".prize").show();
-        $(".reword_word>div:first-child>div:last-child")[0].innerHTML = winGold;
+        $(".reword_word>div:first-child>div:last-child")[0].innerHTML = formatNumber(winGold);
         $(".prize .self img").attr("src", avatar);
         $(".reword_word>div img:last-child").attr(
             "src",
@@ -162,7 +164,7 @@ function showResult(result, topList, winGold, avatar) {
             '.png" alt=""></div><div class="nick">' +
             topList[i].nick +
             '</div><div class="flex ac jc"><img src="images/gold.png" alt=""><div>' +
-            topList[i].total +
+            formatNumber(topList[i].total) +
             "</div></div></div>";
     }
     for (var i = 0; i < 3 - topList.length; i++) {
@@ -205,14 +207,14 @@ function openDraw() {
 
 function sureClick(choice, index) {
     // التحقق من الرصيد
-    let currentBalance = parseFloat($('.balanceCount').text());
+    let currentBalance = parseFloat($('.balanceCount').text().replace(/,/g, ''));
     if (currentBalance < currentGold) {
         showSuccess(info.lang == "ar" ? "رصيد غير كافٍ!" : "Insufficient balance!");
         return;
     }
 
     // تحديث الرصيد مؤقتاً
-    $('.balanceCount').text((currentBalance - currentGold).toFixed(2));
+    $('.balanceCount').text(formatNumber((currentBalance - currentGold).toFixed(2)));
 
     // إرسال الطلب إلى Flutter
     callFlutterApp('game_choice', {
@@ -229,12 +231,12 @@ function sureClick(choice, index) {
             var list = [6, 7, 8, 1, 2, 3, 4, 5];
             var temp = $(`.item${list[index]} .selected div:nth-child(2) div`)[0].innerHTML;
             $(`.item${list[index]} .selected div:nth-child(2) div`)[0].innerHTML = 
-                parseInt(temp) + parseInt(currentGold);
+                formatNumber(parseInt(temp.replace(/,/g, '')) + parseInt(currentGold));
             $(`.item${list[index]} .selected`).show();
 
             // تحديث الرصيد من الاستجابة
             if (res.balance !== undefined) {
-                $('.balanceCount').text(parseFloat(res.balance).toFixed(2));
+                $('.balanceCount').text(formatNumber(parseFloat(res.balance).toFixed(2)));
                 // تحديث معلومات اللاعب
                 if (info.credits !== undefined) {
                     info.credits = res.balance;
@@ -243,15 +245,15 @@ function sureClick(choice, index) {
         } else if (res.code == 10062) {
             showSuccess(info.lang == "ar" ? "يرجى الشحن" : "Please recharge");
             // إعادة الرصيد
-            $('.balanceCount').text(currentBalance.toFixed(2));
+            $('.balanceCount').text(formatNumber(currentBalance.toFixed(2)));
         } else {
             showSuccess(res.message || 'Error');
-            $('.balanceCount').text(currentBalance.toFixed(2));
+            $('.balanceCount').text(formatNumber(currentBalance.toFixed(2)));
         }
     }).catch(function(error) {
         console.error("Choice error:", error);
         showSuccess(info.lang == "ar" ? "خطأ في النظام" : "System Error");
-        $('.balanceCount').text(currentBalance.toFixed(2));
+        $('.balanceCount').text(formatNumber(currentBalance.toFixed(2)));
     });
 }
 
@@ -374,6 +376,25 @@ function bindEvent() {
 }
 
 /**
+ * تنسيق الأرقام بفواصل
+ */
+function formatNumber(num) {
+    if (!num && num !== 0) return '0';
+    var numStr = num.toString();
+    // إزالة أي فواصل موجودة
+    numStr = numStr.replace(/,/g, '');
+    
+    var parts = numStr.split('.');
+    var integerPart = parts[0];
+    var decimalPart = parts.length > 1 ? '.' + parts[1] : '';
+    
+    // إضافة فواصل كل 3 أرقام
+    integerPart = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    
+    return integerPart + decimalPart;
+}
+
+/**
  * دالة للاتصال بـ Flutter
  */
 function callFlutterApp(action, params) {
@@ -405,7 +426,11 @@ function callFlutterApp(action, params) {
             console.warn("FlamingoApp not available, trying direct call");
             // محاولة مباشرة
             try {
-                window.flutterChannel.postMessage(JSON.stringify(message));
+                if (window.flutterChannel && typeof window.flutterChannel.postMessage === 'function') {
+                    window.flutterChannel.postMessage(JSON.stringify(message));
+                } else {
+                    reject('Cannot communicate with Flutter: No channel available');
+                }
             } catch (e) {
                 reject('Cannot communicate with Flutter: ' + e);
             }
@@ -430,6 +455,8 @@ function sendToFlutter(data) {
             window.FlamingoApp.postMessage(JSON.stringify(data));
         } else if (window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
             window.flutter_inappwebview.callHandler('FlamingoApp', JSON.stringify(data));
+        } else if (window.flutterChannel && typeof window.flutterChannel.postMessage === 'function') {
+            window.flutterChannel.postMessage(JSON.stringify(data));
         }
     } catch (e) {
         console.error("Failed to send to Flutter:", e);
@@ -460,8 +487,8 @@ function getInfo(_round, isChoice) {
             }
 
             // تحديث واجهة المستخدم
-            $(".balanceCount")[0].innerHTML = parseFloat(res.data.gold).toFixed(2);
-            $(".profitCount")[0].innerHTML = res.data.profit || 0;
+            $(".balanceCount")[0].innerHTML = formatNumber(parseFloat(res.data.gold).toFixed(2));
+            $(".profitCount")[0].innerHTML = formatNumber(res.data.profit || 0);
             $(".round")[0].innerHTML = (info.lang == "ar" ? "جولة " : "Round ") + res.data.round;
 
             if (status == 1 && isChoice) return;
@@ -516,12 +543,14 @@ function getInfo(_round, isChoice) {
                 var ak = Object.keys(res.data.select);
                 var vk = Object.values(res.data.select);
                 for (var i = 0; i < ak.length; i++) {
-                    $(".item" + searchGift(ak[i]) + " .selected div:nth-child(2) div")[0].innerHTML = vk[i];
+                    $(".item" + searchGift(ak[i]) + " .selected div:nth-child(2) div")[0].innerHTML = formatNumber(vk[i]);
                     $(".item" + searchGift(ak[i]) + " .selected").show();
                 }
             } else {
                 for (var i = 0; i < $(".item .gray").length; i++) {
-                    $(".item" + (i + 1) + " .selected div:nth-child(2) div")[0].innerHTML = 0;
+                    $(
+                        ".item" + (i + 1) + " .selected div:nth-child(2) div"
+                    )[0].innerHTML = 0;
                     $(".item" + (i + 1) + " .selected").hide();
                 }
             }
@@ -571,7 +600,7 @@ function getBill() {
                 var isWin = tempItem.choice == tempItem.result;
                 innerHTML +=
                     '<div class="records-list-item flex ac js"><div class="inner-item">' +
-                    tempItem.gold +
+                    formatNumber(tempItem.gold) +
                     ' gold</div><div class="inner-item"> <img src="images/gift_' +
                     searchGift(tempItem.choice) +
                     '.png" alt=""> </div><div class="inner-item"><img src="images/gift_' +
@@ -618,7 +647,7 @@ function getRank() {
                         '.png" alt=""></div><div class="nick">' +
                         item.nick +
                         '</div><div class="flex ac jc"><img src="images/gold.png" alt=""><div>' +
-                        item.total +
+                        formatNumber(item.total) +
                         "</div></div></div>";
                 } else {
                     innerHTML +=
@@ -629,7 +658,7 @@ function getRank() {
                         '" alt=""></div></div><div class="inner-item">' +
                         item.nick +
                         '</div><div class="inner-item"><img src="images/gold.png" alt=""><div>' +
-                        item.total +
+                        formatNumber(item.total) +
                         "</div></div></div>";
                 }
             }
@@ -733,7 +762,9 @@ function closeGame() {
 }
 
 // تحديث الرصيد من Flutter
-function updateBalance(newBalance) {
-    $('.balanceCount').text(parseFloat(newBalance).toFixed(2));
+window.updateBalance = function(newBalance) {
+    if ($('.balanceCount').length > 0) {
+        $('.balanceCount').text(formatNumber(parseFloat(newBalance).toFixed(2)));
+    }
     info.credits = newBalance;
-}
+};
