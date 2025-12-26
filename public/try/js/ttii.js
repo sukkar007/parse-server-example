@@ -49,12 +49,9 @@ var fruitMap = {
 var pendingRequests = {};
 var requestIdCounter = 0;
 
-// قائمة الانتظار للرهانات
+// قائمة الانتظار للرهانات - لمعالجة الطلبات المتزامنة
 var betQueue = [];
 var isProcessingBet = false;
-
-// رابط URL الأساسي للصور
-var BASE_IMAGE_URL = '';
 
 console.log("Player Info received from Flutter:", info);
 
@@ -95,10 +92,6 @@ window.onFlamingoResponse = function(response) {
 // تهيئة التطبيق
 $(document).ready(function() {
     console.log("Document ready - Flutter WebView Version");
-    
-    // الحصول على رابط الصور الأساسي
-    BASE_IMAGE_URL = window.location.origin + window.location.pathname.replace(/\/[^\/]*$/, '/');
-    console.log("Base image URL:", BASE_IMAGE_URL);
     
     // انتظار معلومات اللاعب من Flutter
     if (window.flamingoPlayerInfo) {
@@ -195,22 +188,21 @@ function showResult(result, topList, winGold, avatar) {
             var winner = topList[i];
             console.log(`الفائز ${i + 1}:`, winner);
             
-            var winnerAvatar = getAbsoluteImageUrl(winner.avatar);
-            var winnerName = winner.nick || winner.username || winner.nickname || `الفائز ${i + 1}`;
+            var winnerAvatar = fixImageUrl(winner.avatar);
+            var winnerName = winner.nick || winner.username || `الفائز ${i + 1}`;
             var winnerPrize = winner.total || winner.winGold || 0;
             
             topHTML += `
                 <div class="personItem">
                     <div class="logoArea">
                         <div class="logo">
-                            <img src="${winnerAvatar}" alt="${winnerName}" 
-                                 onerror="this.src='${getGiftImagePath(1)}'; this.onerror=null;">
+                            <img src="${winnerAvatar}" alt="${winnerName}">
                         </div>
-                        <img class="no${i + 1}" src="${getAbsoluteImageUrl('images/no' + (i + 1) + '.png')}" alt="المركز ${i + 1}">
+                        <img class="no${i + 1}" src="images/no${i + 1}.png" alt="المركز ${i + 1}">
                     </div>
                     <div class="nick">${winnerName}</div>
                     <div class="flex ac jc">
-                        <img src="${getAbsoluteImageUrl('images/gold.png')}" alt="ذهب">
+                        <img src="images/gold.png" alt="ذهب">
                         <div>${formatNumber(winnerPrize)}</div>
                     </div>
                 </div>
@@ -223,12 +215,12 @@ function showResult(result, topList, winGold, avatar) {
                 <div class="personItem">
                     <div class="logoArea">
                         <div class="logo">
-                            <img src="${getAbsoluteImageUrl('images/default_avatar.png')}" alt="لا يوجد">
+                            <img src="images/default_avatar.png" alt="لا يوجد">
                         </div>
                     </div>
                     <div class="nick">---</div>
                     <div class="flex ac jc">
-                        <img src="${getAbsoluteImageUrl('images/gold.png')}" alt="ذهب">
+                        <img src="images/gold.png" alt="ذهب">
                         <div>0</div>
                     </div>
                 </div>
@@ -244,7 +236,7 @@ function showResult(result, topList, winGold, avatar) {
         
         for (var i = 0; i < topList.length; i++) {
             var winner = topList[i];
-            if (winner.uid === info.uid || winner.userId === info.uid || winner.id === info.uid) {
+            if (winner.uid === info.uid || winner.userId === info.uid) {
                 currentUserWinAmount = winner.total || winner.winGold || 0;
                 currentUserIsWinner = true;
                 break;
@@ -257,13 +249,9 @@ function showResult(result, topList, winGold, avatar) {
             
             // عرض صورة المستخدم الفائز
             var selfImg = $(".prize .self img")[0];
-            if (selfImg) {
-                var userAvatar = getAbsoluteImageUrl(info.avatar || avatar || '');
-                selfImg.src = userAvatar;
-                selfImg.onerror = function() {
-                    this.src = getAbsoluteImageUrl('images/default_avatar.png');
-                };
-                console.log("✅ صورة المستخدم الفائز:", userAvatar);
+            if (selfImg && info.avatar) {
+                selfImg.src = fixImageUrl(info.avatar);
+                console.log("✅ صورة المستخدم الفائز:", info.avatar);
             }
         } else {
             console.log("😢 المستخدم الحالي ليس من الفائزين");
@@ -271,7 +259,7 @@ function showResult(result, topList, winGold, avatar) {
             
             var selfImg = $(".prize .self img")[0];
             if (selfImg) {
-                selfImg.src = getAbsoluteImageUrl('images/default_avatar.png');
+                selfImg.src = "images/default_avatar.png";
             }
         }
         
@@ -287,9 +275,6 @@ function showResult(result, topList, winGold, avatar) {
         if (noPrizeImg) {
             var fruitImagePath = getGiftImagePath(fruitNumber);
             noPrizeImg.src = fruitImagePath;
-            noPrizeImg.onerror = function() {
-                this.src = getAbsoluteImageUrl('images/gift_1.png');
-            };
             console.log("✅ صورة الفاكهة في noPrize:", fruitImagePath);
         }
         
@@ -531,7 +516,7 @@ function bindEvent() {
     
     // أحداث النقر على الفواكه - مع تحسين الأداء
     var lastClickTime = 0;
-    var clickCooldown = 300;
+    var clickCooldown = 300; // 300ms بين النقرات
     
     $(".item").click(function() {
         var now = Date.now();
@@ -629,48 +614,23 @@ function bindEvent() {
 }
 
 /**
- * الحصول على رابط صورة مطلق
+ * إصلاح مسار الصور
  */
-function getAbsoluteImageUrl(url) {
-    console.log("🔗 getAbsoluteImageUrl input:", url);
+function fixImageUrl(url) {
+    if (!url) return 'images/default_avatar.png';
     
-    if (!url || url === '' || url === 'null' || url === 'undefined') {
-        var defaultUrl = BASE_IMAGE_URL + 'images/default_avatar.png';
-        console.log("🔗 Returning default URL:", defaultUrl);
-        return defaultUrl;
-    }
-    
-    // إذا كان الرابط يحتوي على http أو https، اتركه كما هو
+    // إذا كان الرابط يحتوي على domain، اتركه كما هو
     if (url.startsWith('http://') || url.startsWith('https://')) {
-        console.log("🔗 Already absolute URL:", url);
         return url;
     }
     
-    // إذا كان الرابط يبدأ بـ /، أضف origin
+    // إذا كان الرابط يبدأ بـ /، أضف domain إذا لزم الأمر
     if (url.startsWith('/')) {
-        var absoluteUrl = window.location.origin + url;
-        console.log("🔗 Added origin to URL:", absoluteUrl);
-        return absoluteUrl;
+        return window.location.origin + url;
     }
     
-    // إذا كان الرابط يبدأ بـ images/، أضف base URL
-    if (url.startsWith('images/')) {
-        var absoluteUrl = BASE_IMAGE_URL + url;
-        console.log("🔗 Added base URL to images path:", absoluteUrl);
-        return absoluteUrl;
-    }
-    
-    // إذا كان الرابط مجرد اسم ملف، أضف images/ path
-    if (url.includes('.png') || url.includes('.jpg') || url.includes('.jpeg') || url.includes('.gif')) {
-        var absoluteUrl = BASE_IMAGE_URL + 'images/' + url;
-        console.log("🔗 Added images path to filename:", absoluteUrl);
-        return absoluteUrl;
-    }
-    
-    // افتراضياً، أضف images/ path
-    var absoluteUrl = BASE_IMAGE_URL + 'images/' + url;
-    console.log("🔗 Default conversion:", absoluteUrl);
-    return absoluteUrl;
+    // إذا كان مجرد اسم ملف، أضف المسار
+    return 'images/' + url;
 }
 
 /**
@@ -679,9 +639,9 @@ function getAbsoluteImageUrl(url) {
 function getGiftImagePath(fruitNumber) {
     if (!fruitNumber || fruitNumber < 1 || fruitNumber > 8) {
         console.warn("Invalid fruit number:", fruitNumber);
-        return getAbsoluteImageUrl('images/gift_1.png');
+        return 'images/gift_1.png'; // صورة افتراضية
     }
-    return getAbsoluteImageUrl('images/gift_' + fruitNumber + '.png');
+    return 'images/gift_' + fruitNumber + '.png';
 }
 
 /**
@@ -886,7 +846,7 @@ function getInfo(_round, isChoice) {
                     giftListHtml +=
                         '<div class="giftItem"><img src="' +
                         getGiftImagePath(fruitNumber) +
-                        '" alt=""><img src="' + getAbsoluteImageUrl('images/new.png') + '" alt=""></div>';
+                        '" alt=""><img src="images/new.png" alt=""></div>';
                 } else {
                     giftListHtml +=
                         '<div class="giftItem"><img src="' +
@@ -1003,7 +963,7 @@ function getRank() {
             
             for (var i = 0; i < res.data.length; i++) {
                 var item = res.data[i];
-                var avatarUrl = getAbsoluteImageUrl(item.avatar);
+                var avatarUrl = fixImageUrl(item.avatar);
                 
                 if (i < 3) {
                     topHTML +=
@@ -1011,9 +971,11 @@ function getRank() {
                         avatarUrl +
                         '" alt=""></div> <img class="no' +
                         (i + 1) +
-                        '" src="' + getAbsoluteImageUrl('images/no' + (i + 1) + '.png') + '" alt=""></div><div class="nick">' +
+                        '" src="images/no' +
+                        (i + 1) +
+                        '.png" alt=""></div><div class="nick">' +
                         (item.nick || 'Unknown') +
-                        '</div><div class="flex ac jc"><img src="' + getAbsoluteImageUrl('images/gold.png') + '" alt=""><div>' +
+                        '</div><div class="flex ac jc"><img src="images/gold.png" alt=""><div>' +
                         formatNumber(item.total || 0) +
                         "</div></div></div>";
                 } else {
@@ -1024,7 +986,7 @@ function getRank() {
                         avatarUrl +
                         '" alt=""></div></div><div class="inner-item">' +
                         (item.nick || 'Unknown') +
-                        '</div><div class="inner-item"><img src="' + getAbsoluteImageUrl('images/gold.png') + '" alt=""><div>' +
+                        '</div><div class="inner-item"><img src="images/gold.png" alt=""><div>' +
                         formatNumber(item.total || 0) +
                         "</div></div></div>";
                 }
@@ -1110,9 +1072,9 @@ function changeLang(defaultLang) {
         var ruleImg = $(".rule")[0];
         var rankImg = $(".rank")[0];
         
-        if (recordsImg) recordsImg.setAttribute("src", getAbsoluteImageUrl("images/btn_records@2x.png"));
-        if (ruleImg) ruleImg.setAttribute("src", getAbsoluteImageUrl("images/btn_rule@2x.png"));
-        if (rankImg) rankImg.setAttribute("src", getAbsoluteImageUrl("images/btn_rank@2x.png"));
+        if (recordsImg) recordsImg.setAttribute("src", "images/btn_records@2x.png");
+        if (ruleImg) ruleImg.setAttribute("src", "images/btn_rule@2x.png");
+        if (rankImg) rankImg.setAttribute("src", "images/btn_rank@2x.png");
     }
 
     languageSelect(defaultLang);
@@ -1137,42 +1099,12 @@ window.updateBalance = function(newBalance) {
 window.debugGame = function() {
     console.log("=== GAME DEBUG INFO ===");
     console.log("info:", info);
-    console.log("BASE_IMAGE_URL:", BASE_IMAGE_URL);
-    console.log("Current URL:", window.location.href);
+    console.log("round:", round);
+    console.log("status:", status);
+    console.log("currentGold:", currentGold);
+    console.log("selectArr:", selectArr);
+    console.log("selectCount:", selectCount);
+    console.log("betQueue length:", betQueue.length);
+    console.log("isProcessingBet:", isProcessingBet);
     console.log("=== END DEBUG ===");
-};
-
-// دالة لاختبار عرض الصور
-window.testImages = function() {
-    console.log("=== TESTING IMAGES ===");
-    console.log("Test default avatar:", getAbsoluteImageUrl('images/default_avatar.png'));
-    console.log("Test gold image:", getAbsoluteImageUrl('images/gold.png'));
-    console.log("Test gift_1 image:", getGiftImagePath(1));
-    console.log("Test no1 image:", getAbsoluteImageUrl('images/no1.png'));
-    
-    // اختبار إذا كانت الصور موجودة
-    var testImages = [
-        'images/default_avatar.png',
-        'images/gold.png',
-        'images/gift_1.png',
-        'images/no1.png',
-        'images/no2.png',
-        'images/no3.png',
-        'images/new.png'
-    ];
-    
-    testImages.forEach(function(img) {
-        var imgUrl = getAbsoluteImageUrl(img);
-        console.log("Testing", img, "->", imgUrl);
-        
-        // إنشاء صورة مخفية للتحقق
-        var testImg = new Image();
-        testImg.onload = function() {
-            console.log("✅ " + img + " loaded successfully");
-        };
-        testImg.onerror = function() {
-            console.log("❌ " + img + " failed to load");
-        };
-        testImg.src = imgUrl;
-    });
 };
