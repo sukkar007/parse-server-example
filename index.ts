@@ -36,7 +36,7 @@ const dashboard = new ParseDashboard(
   {
     apps: [
       {
-        serverURL: process.env.SERVER_URL || 'http://localhost:1337/parse',
+        serverURL: process.env.SERVER_URL || 'https://parse-server-example-o1ht.onrender.com/parse',
         appId: process.env.APP_ID || 'myAppId',
         masterKey: process.env.MASTER_KEY || 'myMasterKey',
         clientKey: process.env.CLIENT_KEY || 'myClientKey',
