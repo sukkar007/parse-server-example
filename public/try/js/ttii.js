@@ -45,18 +45,6 @@ var fruitMap = {
     'f': 5
 };
 
-// خريطة عكسية للبحث عن الحرف من الرقم
-var reverseFruitMap = {
-    6: 'g',
-    7: 'h',
-    8: 'a',
-    1: 'b',
-    2: 'c',
-    3: 'd',
-    4: 'e',
-    5: 'f'
-};
-
 // تخزين callbacks للطلبات المعلقة
 var pendingRequests = {};
 var requestIdCounter = 0;
@@ -155,86 +143,149 @@ function hideHand() {
 }
 
 function showResult(result, topList, winGold, avatar) {
-    console.log("Showing result:", {
-        result: result,
-        winGold: winGold,
-        avatar: avatar,
-        topListLength: topList ? topList.length : 0
-    });
+    console.log("🎉 ===== عرض النتيجة ===== 🎉");
+    console.log("الفاكهة الفائزة:", result);
+    console.log("قائمة الفائزين (أول 3):", topList);
+    console.log("مكسب المستخدم الحالي:", winGold);
+    console.log("صورة المستخدم الحالي:", avatar);
     
-    $(".reword").show();
+    // إخفاء كل شيء أولاً
+    $(".reword, .prize, .noPrize").hide();
     
     var fruitNumber = searchGift(result);
-    console.log("Fruit number for result:", fruitNumber);
+    console.log("رقم الفاكهة الفائزة:", fruitNumber);
     
-    if (winGold && winGold > 0) {
+    // إذا كان هناك فائزون (topList)
+    if (topList && topList.length > 0) {
+        console.log("👑 هناك فائزون، عرض قائمة الفائزين 👑");
+        
+        $(".reword").show();
         $(".prize").show();
         $(".noPrize").hide();
-        
-        $(".reword_word>div:first-child>div:last-child")[0].innerHTML = formatNumber(winGold);
-        
-        // عرض صورة المستخدم الفائز
-        var selfImg = $(".prize .self img")[0];
-        if (selfImg && avatar) {
-            selfImg.src = fixImageUrl(avatar);
-            console.log("Setting user avatar to:", avatar);
-        }
         
         // عرض صورة الفاكهة الفائزة
         var fruitImg = $(".reword_word>div img:last-child")[0];
         if (fruitImg) {
             var fruitImagePath = getGiftImagePath(fruitNumber);
             fruitImg.src = fruitImagePath;
-            console.log("Setting winning fruit image to:", fruitImagePath);
+            console.log("✅ صورة الفاكهة الفائزة:", fruitImagePath);
         }
+        
+        // عرض نص الجولة
+        if (info.lang == "ar") {
+            $(".reword .roundWord").html("جولة " + (round - 1) + " النتيجة");
+        } else {
+            $(".reword .roundWord").html("The result of " + (round - 1) + " round:");
+        }
+        
+        // بناء HTML للفائزين الثلاثة الأوائل
+        var topHTML = "";
+        for (var i = 0; i < Math.min(topList.length, 3); i++) {
+            var winner = topList[i];
+            console.log(`الفائز ${i + 1}:`, winner);
+            
+            var winnerAvatar = fixImageUrl(winner.avatar);
+            var winnerName = winner.nick || winner.username || `الفائز ${i + 1}`;
+            var winnerPrize = winner.total || winner.winGold || 0;
+            
+            topHTML += `
+                <div class="personItem">
+                    <div class="logoArea">
+                        <div class="logo">
+                            <img src="${winnerAvatar}" alt="${winnerName}">
+                        </div>
+                        <img class="no${i + 1}" src="images/no${i + 1}.png" alt="المركز ${i + 1}">
+                    </div>
+                    <div class="nick">${winnerName}</div>
+                    <div class="flex ac jc">
+                        <img src="images/gold.png" alt="ذهب">
+                        <div>${formatNumber(winnerPrize)}</div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // إذا كان هناك أقل من 3 فائزين، أضف أماكن فارغة
+        for (var i = topList.length; i < 3; i++) {
+            topHTML += `
+                <div class="personItem">
+                    <div class="logoArea">
+                        <div class="logo">
+                            <img src="images/default_avatar.png" alt="لا يوجد">
+                        </div>
+                    </div>
+                    <div class="nick">---</div>
+                    <div class="flex ac jc">
+                        <img src="images/gold.png" alt="ذهب">
+                        <div>0</div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        $(".reword_person").html(topHTML);
+        console.log("✅ تم عرض الفائزين!");
+        
+        // إذا كان المستخدم الحالي من الفائزين، عرض مكسبه
+        var currentUserWinAmount = 0;
+        var currentUserIsWinner = false;
+        
+        for (var i = 0; i < topList.length; i++) {
+            var winner = topList[i];
+            if (winner.uid === info.uid || winner.userId === info.uid) {
+                currentUserWinAmount = winner.total || winner.winGold || 0;
+                currentUserIsWinner = true;
+                break;
+            }
+        }
+        
+        if (currentUserIsWinner) {
+            console.log("🎉 المستخدم الحالي فائز! المكسب:", currentUserWinAmount);
+            $(".reword_word>div:first-child>div:last-child")[0].innerHTML = formatNumber(currentUserWinAmount);
+            
+            // عرض صورة المستخدم الفائز
+            var selfImg = $(".prize .self img")[0];
+            if (selfImg && info.avatar) {
+                selfImg.src = fixImageUrl(info.avatar);
+                console.log("✅ صورة المستخدم الفائز:", info.avatar);
+            }
+        } else {
+            console.log("😢 المستخدم الحالي ليس من الفائزين");
+            $(".reword_word>div:first-child>div:last-child")[0].innerHTML = "0";
+            
+            var selfImg = $(".prize .self img")[0];
+            if (selfImg) {
+                selfImg.src = "images/default_avatar.png";
+            }
+        }
+        
     } else {
+        console.log("😢 لا يوجد فائزون، عرض noPrize");
+        // لا يوجد فائزون
+        $(".reword").show();
         $(".noPrize").show();
         $(".prize").hide();
         
-        // عرض صورة الفاكهة الفائزة في noPrize
+        // عرض صورة الفاكهة الفائزة
         var noPrizeImg = $(".noPrize>div img:last-child")[0];
         if (noPrizeImg) {
             var fruitImagePath = getGiftImagePath(fruitNumber);
             noPrizeImg.src = fruitImagePath;
-            console.log("Setting noPrize fruit image to:", fruitImagePath);
+            console.log("✅ صورة الفاكهة في noPrize:", fruitImagePath);
         }
-    }
-    
-    // تحديث نص الجولة
-    if (info.lang == "ar") {
-        $(".reword .roundWord").html("جولة " + (round - 1) + " النتيجة");
-    } else {
-        $(".reword .roundWord").html("The result of " + (round - 1) + " round:");
-    }
-    
-    // عرض الفائزين الثلاثة الأوائل
-    var innerHTML = "";
-    if (topList && topList.length > 0) {
-        for (var i = 0; i < Math.min(topList.length, 3); i++) {
-            var userAvatar = fixImageUrl(topList[i].avatar);
-            innerHTML +=
-                '<div class="personItem"><div class="logoArea"><div class="logo"><img src="' +
-                userAvatar +
-                '" alt=""></div> <img class="no' +
-                (i + 1) +
-                '" src="images/no' +
-                (i + 1) +
-                '.png" alt=""></div><div class="nick">' +
-                (topList[i].nick || 'Unknown') +
-                '</div><div class="flex ac jc"><img src="images/gold.png" alt=""><div>' +
-                formatNumber(topList[i].total || 0) +
-                "</div></div></div>";
+        
+        // عرض نص الجولة
+        if (info.lang == "ar") {
+            $(".reword .roundWord").html("جولة " + (round - 1) + " النتيجة");
+            $(".noPrize .roundWord").html("جولة " + (round - 1) + " النتيجة");
+        } else {
+            $(".reword .roundWord").html("The result of " + (round - 1) + " round:");
+            $(".noPrize .roundWord").html("The result of " + (round - 1) + " round:");
         }
+        
+        // إخفاء منطقة الفائزين
+        $(".reword_person").html("");
     }
-    
-    // إذا كان هناك أقل من 3 فائزين، أضف عناصر فارغة
-    var winnerCount = topList ? Math.min(topList.length, 3) : 0;
-    for (var i = winnerCount; i < 3; i++) {
-        innerHTML +=
-            '<div class="personItem"><div class="logoArea"><div class="logo"><img src="" alt=""></div></div><div class="nick"></div><div class="flex ac jc"></div></div>';
-    }
-    
-    $(".reword_person").html(innerHTML);
     
     // بدء عد تنازلي للإغلاق
     if (resultTimer) clearInterval(resultTimer);
@@ -247,12 +298,15 @@ function showResult(result, topList, winGold, avatar) {
             $(".reword").hide();
             $(".prize").hide();
             $(".noPrize").hide();
+            console.log("⏰ انتهى وقت عرض النتيجة");
         }
         var countDownElement = $(".reword .reword_content .countDown")[0];
         if (countDownElement) {
             countDownElement.innerHTML = resultCount + "s";
         }
     }, 1000);
+    
+    console.log("🎊 ===== انتهى عرض النتيجة ===== 🎊");
 }
 
 function countDown() {
@@ -557,13 +611,6 @@ function searchGift(value) {
 }
 
 /**
- * البحث عن حرف الفاكهة من الرقم (إذا لزم الأمر)
- */
-function getFruitChar(number) {
-    return reverseFruitMap[number] || 'b';
-}
-
-/**
  * دالة للاتصال بـ Flutter
  */
 function callFlutterApp(action, params) {
@@ -767,44 +814,22 @@ function getInfo(_round, isChoice) {
 
             // عرض النتيجة إذا كانت هناك جولة سابقة
             if (_round) {
-                console.log("Previous round result data:", {
+                console.log("🎯 ===== عرض نتيجة الجولة السابقة ===== 🎯");
+                console.log("بيانات النتيجة من الخادم:", {
                     result: res.data.result,
                     top: res.data.top,
                     winGold: res.data.winGold,
-                    avatar: res.data.avatar
+                    avatar: res.data.avatar,
+                    nickname: res.data.nickname
                 });
                 
-                if (res.data.top && res.data.top.length > 0) {
-                    console.log("Showing top winners:", res.data.top);
-                    showResult(
-                        res.data.result,
-                        res.data.top,
-                        res.data.winGold || 0,
-                        res.data.avatar || ''
-                    );
-                } else {
-                    // لا يوجد فائزين، عرض noPrize
-                    console.log("No winners for this round");
-                    if (info.lang == "ar") {
-                        $(".rewordNo .roundWord").html("جولة " + (round - 1) + " النتيجة");
-                    } else {
-                        $(".rewordNo .roundWord").html("The result of " + (round - 1) + " round:");
-                    }
-                    
-                    resultTimer = setInterval(function() {
-                        resultCount--;
-                        if (resultCount < 0) {
-                            resultCount = 5;
-                            clearInterval(resultTimer);
-                            $(".rewordNo").hide();
-                        }
-                        var countDownElement = $(".rewordNo .reword_content .countDown")[0];
-                        if (countDownElement) {
-                            countDownElement.innerHTML = resultCount + "s";
-                        }
-                    }, 1000);
-                    $(".rewordNo").show();
-                }
+                // عرض النتيجة مع الفائزين
+                showResult(
+                    res.data.result,
+                    res.data.top || [],
+                    res.data.winGold || 0,
+                    res.data.avatar || ''
+                );
             }
         }
     }).catch(function(error) {
@@ -993,18 +1018,4 @@ window.updateBalance = function(newBalance) {
         balanceElement.innerHTML = formatNumber(parseFloat(newBalance).toFixed(2));
     }
     info.credits = newBalance;
-};
-
-// دالة مساعدة للفحص
-window.debugGame = function() {
-    console.log("=== GAME DEBUG INFO ===");
-    console.log("info:", info);
-    console.log("round:", round);
-    console.log("status:", status);
-    console.log("currentGold:", currentGold);
-    console.log("selectArr:", selectArr);
-    console.log("selectCount:", selectCount);
-    console.log("fruitMap:", fruitMap);
-    console.log("Number of .item elements:", $(".item").length);
-    console.log("=== END DEBUG ===");
 };
