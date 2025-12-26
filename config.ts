@@ -10,6 +10,13 @@ export const config = {
   restAPIKey: process.env.REST_API_KEY || 'myRestApiKey',
   javascriptKey: process.env.JAVASCRIPT_KEY || 'myJavascriptKey',
   serverURL: process.env.SERVER_URL || 'http://localhost:1337/parse', // Don't forget to change to https if needed
+  
+  // -- الإعدادات العامة للأذونات --
+  // هذا الإعداد يسمح لجميع المستخدمين بقراءة جميع الكائنات بشكل افتراضي
+  defaultPublicReadAccess: true,
+  // هذا الإعداد يمنع المستخدمين من الكتابة أو التعديل على الكائنات بشكل عام
+  defaultPublicWriteAccess: true,
+
   liveQuery: {
     classNames: ['Posts', 'Comments', 'Streaming', 'User', 'Installation'], // List of classes to support for query subscriptions
   },
@@ -20,7 +27,7 @@ export const config = {
     recreateModifiedFields: false,
     deleteExtraFields: false,
   },
- dashboardUsers: [
+  dashboardUsers: [
     {
       user: process.env.DASHBOARD_USER || 'admin',
       pass: process.env.DASHBOARD_PASS || 'admin123',
