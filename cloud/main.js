@@ -1,5 +1,5 @@
 const OneSignal = require('@onesignal/node-onesignal');
-
+import './dynamicSchemaFull.js';
 // OneSignal config
 const app_id = "7dec5bab-5550-4977-af9d-563e58d64721";
 const user_key_token = "os_v2_app_pxwfxk2vkbexpl45ky7frvsheejjt5vfgk2udcetlfdjqmpkgmuxzghyhf3dzqm5njoioddsruaoqezy6n7puoxdohswdeanxdc32qa";
