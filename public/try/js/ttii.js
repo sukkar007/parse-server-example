@@ -56,6 +56,10 @@ var isProcessingBet = false;
 // رابط URL الأساسي للصور
 var BASE_IMAGE_URL = '';
 
+// وقت آخر نقر - لمنع النقر السريع
+var lastClickTime = 0;
+var CLICK_COOLDOWN = 300; // 300ms بين النقرات
+
 console.log("Player Info received from Flutter:", info);
 
 // استلام معلومات اللاعب من Flutter
@@ -447,6 +451,13 @@ function sureClick(choice, index) {
         return;
     }
     
+    // التحقق من الحد الأقصى للاختيارات
+    var isHas = selectArr.includes(choice);
+    if (selectArr.length > 5 && !isHas) {
+        showSuccess("Max Selected");
+        return;
+    }
+    
     // تحديث الواجهة فوراً
     var uiSuccess = quickBet(choice, index);
     if (!uiSuccess) {
@@ -529,44 +540,27 @@ function bindEvent() {
         console.log("Selected gold:", currentGold);
     });
     
-    // أحداث النقر على الفواكه - مع تحسين الأداء
-    var lastClickTime = 0;
-    var clickCooldown = 300;
-    
-    $(".item").click(function() {
+    // أحداث النقر على الفواكه - الطريقة الأصلية البسيطة
+    $(".item").click(function(e) {
+        e.stopPropagation();
+        
         var now = Date.now();
-        if (now - lastClickTime < clickCooldown) {
+        if (now - lastClickTime < CLICK_COOLDOWN) {
             console.log("⏳ انتظر قليلاً بين النقرات");
             return;
         }
         lastClickTime = now;
         
         console.log("🍎 Fruit item clicked, status:", status);
+        
         if (status == 0) {
             var index = $(this).data("index");
-            console.log("Item index:", index);
+            console.log("Item index:", index, "choice:", choiceList[index]);
             
             // إزالة active من جميع الفواكه
-            for (var i = 0; i < $(".item").length; i++) {
-                $(".item" + (i + 1)).removeClass("active");
-            }
+            $(".item").removeClass("active");
             
-            // التحقق من الحد الأقصى للاختيارات
-            console.log("selectCount:", selectCount, "selectArr:", selectArr);
-            
-            var isHas = false;
-            for (var i = 0; i < selectArr.length; i++) {
-                if (selectArr[i] == choiceList[index]) {
-                    isHas = true;
-                    break;
-                }
-            }
-            
-            if (selectArr.length > 5 && !isHas) {
-                showSuccess("Max Selected");
-                return;
-            }
-
+            // النقر على الفاكهة
             sureClick(choiceList[index], index);
         }
     });
@@ -625,52 +619,44 @@ function bindEvent() {
         console.error("Visibility change error:", e);
     }
     
-    console.log("Events bound successfully");
+    console.log("✅ Events bound successfully");
+    
+    // إضافة معالج للنقر على body لمنع الانتشار
+    $("body").click(function(e) {
+        e.stopPropagation();
+    });
 }
 
 /**
  * الحصول على رابط صورة مطلق
  */
 function getAbsoluteImageUrl(url) {
-    console.log("🔗 getAbsoluteImageUrl input:", url);
-    
     if (!url || url === '' || url === 'null' || url === 'undefined') {
-        var defaultUrl = BASE_IMAGE_URL + 'images/default_avatar.png';
-        console.log("🔗 Returning default URL:", defaultUrl);
-        return defaultUrl;
+        return BASE_IMAGE_URL + 'images/default_avatar.png';
     }
     
     // إذا كان الرابط يحتوي على http أو https، اتركه كما هو
     if (url.startsWith('http://') || url.startsWith('https://')) {
-        console.log("🔗 Already absolute URL:", url);
         return url;
     }
     
     // إذا كان الرابط يبدأ بـ /، أضف origin
     if (url.startsWith('/')) {
-        var absoluteUrl = window.location.origin + url;
-        console.log("🔗 Added origin to URL:", absoluteUrl);
-        return absoluteUrl;
+        return window.location.origin + url;
     }
     
     // إذا كان الرابط يبدأ بـ images/، أضف base URL
     if (url.startsWith('images/')) {
-        var absoluteUrl = BASE_IMAGE_URL + url;
-        console.log("🔗 Added base URL to images path:", absoluteUrl);
-        return absoluteUrl;
+        return BASE_IMAGE_URL + url;
     }
     
     // إذا كان الرابط مجرد اسم ملف، أضف images/ path
     if (url.includes('.png') || url.includes('.jpg') || url.includes('.jpeg') || url.includes('.gif')) {
-        var absoluteUrl = BASE_IMAGE_URL + 'images/' + url;
-        console.log("🔗 Added images path to filename:", absoluteUrl);
-        return absoluteUrl;
+        return BASE_IMAGE_URL + 'images/' + url;
     }
     
     // افتراضياً، أضف images/ path
-    var absoluteUrl = BASE_IMAGE_URL + 'images/' + url;
-    console.log("🔗 Default conversion:", absoluteUrl);
-    return absoluteUrl;
+    return BASE_IMAGE_URL + 'images/' + url;
 }
 
 /**
@@ -678,7 +664,6 @@ function getAbsoluteImageUrl(url) {
  */
 function getGiftImagePath(fruitNumber) {
     if (!fruitNumber || fruitNumber < 1 || fruitNumber > 8) {
-        console.warn("Invalid fruit number:", fruitNumber);
         return getAbsoluteImageUrl('images/gift_1.png');
     }
     return getAbsoluteImageUrl('images/gift_' + fruitNumber + '.png');
@@ -708,7 +693,6 @@ function formatNumber(num) {
  */
 function searchGift(value) {
     if (!value) {
-        console.warn("searchGift: No value provided");
         return 1;
     }
     
@@ -716,7 +700,6 @@ function searchGift(value) {
     var result = fruitMap[value];
     
     if (!result) {
-        console.warn("Invalid fruit value:", value, "valid values:", Object.keys(fruitMap));
         return 1;
     }
     
@@ -993,6 +976,7 @@ function getBill() {
         console.error("Bill error:", error);
     });
 }
+
 
 function getRank() {
     callFlutterApp('game_rank', {}).then(function(res) {
