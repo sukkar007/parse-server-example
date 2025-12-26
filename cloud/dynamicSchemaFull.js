@@ -1,5 +1,5 @@
 // ./cloud/dynamicSchemaFull.js
-import Parse from 'parse/node';
+import Parse from 'parse/node.js';
 
 // دالة لإنشاء أي Class بشكل ديناميكي
 async function ensureClass(className, fields = {}) {
