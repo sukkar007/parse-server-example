@@ -131,32 +131,43 @@ function hideHand() {
 }
 
 function showResult(result, topList, winGold, avatar) {
+    console.log("Showing result - avatar URL:", avatar);
+    
     $(".reword").show();
     if (winGold && winGold > 0) {
         $(".prize").show();
         $(".reword_word>div:first-child>div:last-child")[0].innerHTML = formatNumber(winGold);
-        $(".prize .self img").attr("src", avatar);
+        
+        // عرض صورة المستخدم الفائز
+        var selfImg = $(".prize .self img")[0];
+        if (selfImg && avatar) {
+            selfImg.src = fixImageUrl(avatar);
+        }
+        
         $(".reword_word>div img:last-child").attr(
             "src",
-            "images/gift_" + searchGift(result) + ".png"
+            getGiftImagePath(searchGift(result))
         );
     } else {
         $(".noPrize").show();
         $(".noPrize>div img:last-child").attr(
             "src",
-            "images/gift_" + searchGift(result) + ".png"
+            getGiftImagePath(searchGift(result))
         );
     }
+    
     if (info.lang == "ar") {
         $(".reword .roundWord").html("جولة " + (round - 1) + " النتيجة");
     } else {
         $(".reword .roundWord").html("The result of " + (round - 1) + " round:");
     }
+    
     var innerHTML = "";
     for (var i = 0; i < topList.length; i++) {
+        var userAvatar = fixImageUrl(topList[i].avatar);
         innerHTML +=
             '<div class="personItem"><div class="logoArea"><div class="logo"><img src="' +
-            topList[i].avatar +
+            userAvatar +
             '" alt=""></div> <img class="no' +
             (i + 1) +
             '" src="images/no' +
@@ -172,6 +183,7 @@ function showResult(result, topList, winGold, avatar) {
             '<div class="personItem"><div class="logoArea"><div class="logo"><img src="" alt=""></div></div><div class="nick"></div><div class="flex ac jc"></div></div>';
     }
     $(".reword_person").html(innerHTML);
+    
     resultTimer = setInterval(function() {
         resultCount--;
         if (resultCount < 0) {
@@ -412,6 +424,34 @@ function bindEvent() {
 }
 
 /**
+ * إصلاح مسار الصور
+ */
+function fixImageUrl(url) {
+    if (!url) return '';
+    
+    // إذا كان الرابط يحتوي على domain، اتركه كما هو
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+        return url;
+    }
+    
+    // إذا كان الرابط يبدأ بـ /، أضف domain إذا لزم الأمر
+    if (url.startsWith('/')) {
+        // يمكنك تغيير هذا الرابط إلى domain الخاص بك
+        return window.location.origin + url;
+    }
+    
+    // إذا كان مجرد اسم ملف، أضف المسار
+    return 'images/' + url;
+}
+
+/**
+ * الحصول على مسار صورة الفاكهة
+ */
+function getGiftImagePath(fruitNumber) {
+    return 'images/gift_' + fruitNumber + '.png';
+}
+
+/**
  * تنسيق الأرقام بفواصل
  */
 function formatNumber(num) {
@@ -428,6 +468,46 @@ function formatNumber(num) {
     integerPart = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     
     return integerPart + decimalPart;
+}
+
+/**
+ * البحث عن رقم الفاكهة من الحرف
+ */
+function searchGift(value) {
+    if (!value) return 1;
+    
+    console.log("searchGift searching for:", value);
+    
+    var temp = -1;
+    for (var i = 0; i < choiceList.length; i++) {
+        if (value == choiceList[i]) {
+            temp = i;
+            break;
+        }
+    }
+    
+    console.log("Found at index:", temp);
+    
+    if (temp === -1) {
+        console.warn("Invalid fruit value:", value);
+        return 1; // قيمة افتراضية
+    }
+    
+    // هذه الخريطة تحول من الحرف إلى الرقم الصحيح
+    var fruitMap = {
+        'g': 6,
+        'h': 7,
+        'a': 8,
+        'b': 1,
+        'c': 2,
+        'd': 3,
+        'e': 4,
+        'f': 5
+    };
+    
+    var result = fruitMap[value] || 1;
+    console.log("Mapped fruit", value, "to number:", result);
+    return result;
 }
 
 /**
@@ -557,13 +637,16 @@ function getInfo(_round, isChoice) {
 
             // نتيجة الجولة السابقة
             if (res.data.result && res.data.result != "") {
-                var fruitIndex = searchGift(res.data.result);
-                $(".item" + fruitIndex).addClass("active");
+                var fruitNumber = searchGift(res.data.result);
+                console.log("Previous winning fruit:", res.data.result, "mapped to number:", fruitNumber);
+                
+                $(".item" + fruitNumber).addClass("active");
+                
                 var noPrizeImg = $(".noPrize1>div img:last-child")[0];
                 if (noPrizeImg) {
                     noPrizeImg.setAttribute(
                         "src",
-                        "images/gift_" + fruitIndex + ".png"
+                        getGiftImagePath(fruitNumber)
                     );
                 }
             }
@@ -571,18 +654,20 @@ function getInfo(_round, isChoice) {
             // قائمة النتائج
             var giftListHtml = "";
             var resultList = (res.data.resultList || []).reverse();
+            console.log("Result list:", resultList);
+            
             for (var i = 0; i < resultList.length; i++) {
-                var _index = searchGift(resultList[i]);
+                var fruitNumber = searchGift(resultList[i]);
                 if (i == 0) {
                     giftListHtml +=
-                        '<div class="giftItem"><img src="images/gift_' +
-                        _index +
-                        '.png" alt=""><img src="images/new.png" alt=""></div>';
+                        '<div class="giftItem"><img src="' +
+                        getGiftImagePath(fruitNumber) +
+                        '" alt=""><img src="images/new.png" alt=""></div>';
                 } else {
                     giftListHtml +=
-                        '<div class="giftItem"><img src="images/gift_' +
-                        _index +
-                        '.png" alt=""></div>';
+                        '<div class="giftItem"><img src="' +
+                        getGiftImagePath(fruitNumber) +
+                        '" alt=""></div>';
                 }
             }
             $(".giftList").html(giftListHtml);
@@ -596,13 +681,17 @@ function getInfo(_round, isChoice) {
             if (res.data.select && Object.keys(res.data.select).length) {
                 var ak = Object.keys(res.data.select);
                 var vk = Object.values(res.data.select);
+                console.log("Current bets:", res.data.select);
+                
                 for (var i = 0; i < ak.length; i++) {
-                    var fruitIndex = searchGift(ak[i]);
-                    var amountElement = $(".item" + fruitIndex + " .selected div:nth-child(2) div")[0];
+                    var fruitNumber = searchGift(ak[i]);
+                    console.log("Bet on fruit:", ak[i], "mapped to number:", fruitNumber, "amount:", vk[i]);
+                    
+                    var amountElement = $(".item" + fruitNumber + " .selected div:nth-child(2) div")[0];
                     if (amountElement) {
                         amountElement.innerHTML = formatNumber(vk[i]);
                     }
-                    $(".item" + fruitIndex + " .selected").show();
+                    $(".item" + fruitNumber + " .selected").show();
                 }
             } else {
                 for (var i = 0; i < $(".item .gray").length; i++) {
@@ -616,6 +705,7 @@ function getInfo(_round, isChoice) {
 
             // عرض النتيجة
             if (_round && res.data.top && res.data.top.length) {
+                console.log("Showing top winners:", res.data.top);
                 showResult(
                     res.data.result,
                     res.data.top,
@@ -663,19 +753,22 @@ function getBill() {
             for (var i = 0; i < res.data.length; i++) {
                 var tempItem = res.data[i];
                 var isWin = tempItem.choice == tempItem.result;
+                var choiceNumber = searchGift(tempItem.choice);
+                var resultNumber = searchGift(tempItem.result);
+                
                 innerHTML +=
                     '<div class="records-list-item flex ac js"><div class="inner-item">' +
                     formatNumber(tempItem.gold) +
-                    ' gold</div><div class="inner-item"> <img src="images/gift_' +
-                    searchGift(tempItem.choice) +
-                    '.png" alt=""> </div><div class="inner-item"><img src="images/gift_' +
-                    (tempItem.result ? searchGift(tempItem.result) : '1') +
-                    '.png" alt=""></div><div class="inner-item"><div>' +
+                    ' gold</div><div class="inner-item"> <img src="' +
+                    getGiftImagePath(choiceNumber) +
+                    '" alt=""> </div><div class="inner-item"><img src="' +
+                    getGiftImagePath(resultNumber) +
+                    '" alt=""></div><div class="inner-item"><div>' +
                     changeWord(isWin) +
                     "</div>" +
                     (isWin ?
                         "<div>(" +
-                        timesWord[searchGift(tempItem.result) - 1] +
+                        timesWord[resultNumber - 1] +
                         changeTimesWord() +
                         ")</div>" :
                         "") +
@@ -701,10 +794,12 @@ function getRank() {
             
             for (var i = 0; i < res.data.length; i++) {
                 var item = res.data[i];
+                var avatarUrl = fixImageUrl(item.avatar);
+                
                 if (i < 3) {
                     topHTML +=
                         '<div class="personItem"><div class="logoArea"><div class="logo"><img src="' +
-                        item.avatar +
+                        avatarUrl +
                         '" alt=""></div> <img class="no' +
                         (i + 1) +
                         '" src="images/no' +
@@ -719,7 +814,7 @@ function getRank() {
                         '<div class="rank-list-item flex ac js"><div class="inner-item">' +
                         (i + 1) +
                         '</div><div class="inner-item"><div class="logo"><img src="' +
-                        item.avatar +
+                        avatarUrl +
                         '" alt=""></div></div><div class="inner-item">' +
                         item.nick +
                         '</div><div class="inner-item"><img src="images/gold.png" alt=""><div>' +
@@ -733,20 +828,6 @@ function getRank() {
     }).catch(function(error) {
         console.error("Rank error:", error);
     });
-}
-
-function searchGift(value) {
-    if (!value) return 1;
-    
-    var temp = 0;
-    for (var i = 0; i < choiceList.length; i++) {
-        if (value == choiceList[i]) {
-            temp = i;
-            break;
-        }
-    }
-    var list = [6, 7, 8, 1, 2, 3, 4, 5];
-    return list[temp];
 }
 
 function changeTimesWord() {
