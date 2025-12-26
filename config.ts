@@ -9,7 +9,7 @@ export const config = {
   clientKey: process.env.CLIENT_KEY || 'myClientKey',
   restAPIKey: process.env.REST_API_KEY || 'myRestApiKey',
   javascriptKey: process.env.JAVASCRIPT_KEY || 'myJavascriptKey',
-  serverURL: process.env.SERVER_URL || 'https://localhost:1337/parse', // Don't forget to change to https if needed
+  serverURL: process.env.SERVER_URL || 'https://parse-server-example-o1ht.onrender.com/parse', // Don't forget to change to https if needed
   
   // -- الإعدادات العامة للأذونات --
   // هذا الإعداد يسمح لجميع المستخدمين بقراءة جميع الكائنات بشكل افتراضي
