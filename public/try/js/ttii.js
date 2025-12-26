@@ -206,6 +206,8 @@ function openDraw() {
 }
 
 function sureClick(choice, index) {
+    console.log("sureClick called - choice:", choice, "index:", index);
+    
     // التحقق من الرصيد
     let currentBalance = parseFloat($('.balanceCount').text().replace(/,/g, ''));
     if (currentBalance < currentGold) {
@@ -229,10 +231,12 @@ function sureClick(choice, index) {
             }
 
             var list = [6, 7, 8, 1, 2, 3, 4, 5];
-            var temp = $(`.item${list[index]} .selected div:nth-child(2) div`)[0].innerHTML;
-            $(`.item${list[index]} .selected div:nth-child(2) div`)[0].innerHTML = 
-                formatNumber(parseInt(temp.replace(/,/g, '')) + parseInt(currentGold));
-            $(`.item${list[index]} .selected`).show();
+            var tempElement = $(`.item${list[index]} .selected div:nth-child(2) div`)[0];
+            if (tempElement) {
+                var temp = tempElement.innerHTML.replace(/,/g, '');
+                tempElement.innerHTML = formatNumber(parseInt(temp) + parseInt(currentGold));
+                $(`.item${list[index]} .selected`).show();
+            }
 
             // تحديث الرصيد من الاستجابة
             if (res.balance !== undefined) {
@@ -281,7 +285,10 @@ function roll(dir) {
     }, 1000);
     
     for (var i = 0; i < $(".item .gray").length; i++) {
-        $(".item" + (i + 1) + " .selected div:nth-child(2) div")[0].innerHTML = 0;
+        var selectedDiv = $(".item" + (i + 1) + " .selected div:nth-child(2) div")[0];
+        if (selectedDiv) {
+            selectedDiv.innerHTML = "0";
+        }
         $(".item" + (i + 1) + " .selected").hide();
         $(".item" + (i + 1)).removeClass("active");
         $($(".item .gray")[i]).show();
@@ -303,28 +310,53 @@ function roll(dir) {
 }
 
 function bindEvent() {
+    console.log("Binding events...");
+    
     // أحداث اختيار قيمة الذهب
     $(".clickArea .clickItem").click(function() {
+        console.log("Gold item clicked");
         $(".clickItem").removeClass("active");
         $(this).addClass("active");
-        currentGold = goldList[$(this).data("index")];
+        var index = $(this).data("index");
+        currentGold = goldList[index] || 1;
         console.log("Selected gold:", currentGold);
     });
     
-    // أحداث النقر على الفواكه
-    for (var i = 0; i < 8; i++) {
-        (function(index) {
-            $(".item" + (index + 1)).click(function() {
-                if (status === 0) {
-                    var choice = choiceList[index];
-                    sureClick(choice, index);
+    // أحداث النقر على الفواكه - نفس طريقة ttii.js الأصلية
+    $(".item").click(function() {
+        console.log("Fruit item clicked, status:", status);
+        if (status == 0) {
+            var index = $(this).data("index");
+            console.log("Item index:", index);
+            
+            // إزالة active من جميع الفواكه
+            for (var i = 0; i < $(".item").length; i++) {
+                $(".item" + (i + 1)).removeClass("active");
+            }
+            
+            // التحقق من الحد الأقصى للاختيارات
+            console.log("selectCount:", selectCount, "selectArr:", selectArr);
+            
+            var isHas = false;
+            for (var i = 0; i < selectArr.length; i++) {
+                if (selectArr[i] == choiceList[index]) {
+                    isHas = true;
+                    break;
                 }
-            });
-        })(i);
-    }
+            }
+            
+            if (selectArr.length > 5 && !isHas) {
+                showSuccess("Max Selected");
+                return;
+            }
+
+            sureClick(choiceList[index], index);
+        }
+    });
     
     // أحداث الأزرار الجانبية
     $(".records").click(function() {
+        console.log("Records clicked");
         getBill();
         $(".recordsBg").show();
     });
@@ -334,6 +366,7 @@ function bindEvent() {
     });
 
     $(".rule").click(function() {
+        console.log("Rule clicked");
         $(".ruleBg").show();
     });
     
@@ -342,6 +375,7 @@ function bindEvent() {
     });
 
     $(".rank").click(function() {
+        console.log("Rank clicked");
         getRank();
         $(".rankBg").show();
     });
@@ -373,13 +407,15 @@ function bindEvent() {
     } catch (e) {
         console.error("Visibility change error:", e);
     }
+    
+    console.log("Events bound successfully");
 }
 
 /**
  * تنسيق الأرقام بفواصل
  */
 function formatNumber(num) {
-    if (!num && num !== 0) return '0';
+    if (num === null || num === undefined || num === '') return '0';
     var numStr = num.toString();
     // إزالة أي فواصل موجودة
     numStr = numStr.replace(/,/g, '');
@@ -487,16 +523,30 @@ function getInfo(_round, isChoice) {
             }
 
             // تحديث واجهة المستخدم
-            $(".balanceCount")[0].innerHTML = formatNumber(parseFloat(res.data.gold).toFixed(2));
-            $(".profitCount")[0].innerHTML = formatNumber(res.data.profit || 0);
-            $(".round")[0].innerHTML = (info.lang == "ar" ? "جولة " : "Round ") + res.data.round;
+            var balanceCount = $(".balanceCount")[0];
+            if (balanceCount) {
+                balanceCount.innerHTML = formatNumber(parseFloat(res.data.gold).toFixed(2));
+            }
+            
+            var profitCount = $(".profitCount")[0];
+            if (profitCount) {
+                profitCount.innerHTML = formatNumber(res.data.profit || 0);
+            }
+            
+            var roundElement = $(".round")[0];
+            if (roundElement) {
+                roundElement.innerHTML = (info.lang == "ar" ? "جولة " : "Round ") + res.data.round;
+            }
 
             if (status == 1 && isChoice) return;
             round = res.data.round;
 
             if (!isChoice) {
                 countTime = res.data.countdown;
-                $(".coutDown")[0].innerHTML = countTime + "s";
+                var countDownElement = $(".coutDown")[0];
+                if (countDownElement) {
+                    countDownElement.innerHTML = countTime + "s";
+                }
                 
                 if (countTimer) clearInterval(countTimer);
                 countDown();
@@ -507,11 +557,15 @@ function getInfo(_round, isChoice) {
 
             // نتيجة الجولة السابقة
             if (res.data.result && res.data.result != "") {
-                $(".item" + searchGift(res.data.result)).addClass("active");
-                $(".noPrize1>div img:last-child").attr(
-                    "src",
-                    "images/gift_" + searchGift(res.data.result) + ".png"
-                );
+                var fruitIndex = searchGift(res.data.result);
+                $(".item" + fruitIndex).addClass("active");
+                var noPrizeImg = $(".noPrize1>div img:last-child")[0];
+                if (noPrizeImg) {
+                    noPrizeImg.setAttribute(
+                        "src",
+                        "images/gift_" + fruitIndex + ".png"
+                    );
+                }
             }
 
             // قائمة النتائج
@@ -543,14 +597,19 @@ function getInfo(_round, isChoice) {
                 var ak = Object.keys(res.data.select);
                 var vk = Object.values(res.data.select);
                 for (var i = 0; i < ak.length; i++) {
-                    $(".item" + searchGift(ak[i]) + " .selected div:nth-child(2) div")[0].innerHTML = formatNumber(vk[i]);
-                    $(".item" + searchGift(ak[i]) + " .selected").show();
+                    var fruitIndex = searchGift(ak[i]);
+                    var amountElement = $(".item" + fruitIndex + " .selected div:nth-child(2) div")[0];
+                    if (amountElement) {
+                        amountElement.innerHTML = formatNumber(vk[i]);
+                    }
+                    $(".item" + fruitIndex + " .selected").show();
                 }
             } else {
                 for (var i = 0; i < $(".item .gray").length; i++) {
-                    $(
-                        ".item" + (i + 1) + " .selected div:nth-child(2) div"
-                    )[0].innerHTML = 0;
+                    var amountElement = $(".item" + (i + 1) + " .selected div:nth-child(2) div")[0];
+                    if (amountElement) {
+                        amountElement.innerHTML = "0";
+                    }
                     $(".item" + (i + 1) + " .selected").hide();
                 }
             }
@@ -564,10 +623,13 @@ function getInfo(_round, isChoice) {
                     res.data.avatar
                 );
             } else if (_round) {
-                if (info.lang == "ar") {
-                    $(".rewordNo .roundWord").html("جولة " + (round - 1) + " النتيجة");
-                } else {
-                    $(".rewordNo .roundWord").html("The result of " + (round - 1) + " round:");
+                var roundWordElement = $(".rewordNo .roundWord")[0];
+                if (roundWordElement) {
+                    if (info.lang == "ar") {
+                        roundWordElement.innerHTML = "جولة " + (round - 1) + " النتيجة";
+                    } else {
+                        roundWordElement.innerHTML = "The result of " + (round - 1) + " round:";
+                    }
                 }
                 
                 resultTimer = setInterval(function() {
@@ -577,7 +639,10 @@ function getInfo(_round, isChoice) {
                         clearInterval(resultTimer);
                         $(".rewordNo").hide();
                     }
-                    $(".rewordNo .reword_content .countDown")[0].innerHTML = resultCount + "s";
+                    var countDownElement = $(".rewordNo .reword_content .countDown")[0];
+                    if (countDownElement) {
+                        countDownElement.innerHTML = resultCount + "s";
+                    }
                 }, 1000);
                 $(".rewordNo").show();
             }
@@ -711,6 +776,8 @@ function showSuccess(msg, fn) {
 }
 
 function showMessage(msg) {
+    console.log("Showing message:", msg);
+    
     // إرسال الرسالة إلى Flutter لعرضها
     sendToFlutter({
         action: 'showMessage',
@@ -720,12 +787,15 @@ function showMessage(msg) {
     
     // عرض محلي أيضاً إن أمكن
     if ($(".pop-success").length > 0) {
-        $(".pop-success div")[0].innerHTML = msg;
-        $(".pop-success").show();
-        setTimeout(function() {
-            $(".pop-success div")[0].innerHTML = "";
-            $(".pop-success").hide();
-        }, 1500);
+        var popSuccessDiv = $(".pop-success div")[0];
+        if (popSuccessDiv) {
+            popSuccessDiv.innerHTML = msg;
+            $(".pop-success").show();
+            setTimeout(function() {
+                popSuccessDiv.innerHTML = "";
+                $(".pop-success").hide();
+            }, 1500);
+        }
     }
 }
 
@@ -748,9 +818,13 @@ function changeLang(defaultLang) {
     }
     
     if (info.lang == "ar") {
-        $(".records").attr("src", "images/btn_records@2x.png");
-        $(".rule").attr("src", "images/btn_rule@2x.png");
-        $(".rank").attr("src", "images/btn_rank@2x.png");
+        var recordsImg = $(".records")[0];
+        var ruleImg = $(".rule")[0];
+        var rankImg = $(".rank")[0];
+        
+        if (recordsImg) recordsImg.setAttribute("src", "images/btn_records@2x.png");
+        if (ruleImg) ruleImg.setAttribute("src", "images/btn_rule@2x.png");
+        if (rankImg) rankImg.setAttribute("src", "images/btn_rank@2x.png");
     }
 
     languageSelect(defaultLang);
@@ -763,8 +837,10 @@ function closeGame() {
 
 // تحديث الرصيد من Flutter
 window.updateBalance = function(newBalance) {
-    if ($('.balanceCount').length > 0) {
-        $('.balanceCount').text(formatNumber(parseFloat(newBalance).toFixed(2)));
+    console.log("Updating balance from Flutter:", newBalance);
+    var balanceElement = $('.balanceCount')[0];
+    if (balanceElement) {
+        balanceElement.innerHTML = formatNumber(parseFloat(newBalance).toFixed(2));
     }
     info.credits = newBalance;
 };
