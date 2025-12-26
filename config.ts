@@ -2,14 +2,14 @@ import { schemaDefinitions } from './cloud/schema.js';
 
 export const config = {
   databaseURI:
-    process.env.DATABASE_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/dev',
+    process.env.DATABASE_URI || process.env.MONGODB_URI || 'mongodb+srv://flamingolive007:flamingolive007hhh@flamingo.kgp9mt9.mongodb.net/?appName=Flamingo',
   cloud: './cloud/main.js',
   appId: process.env.APP_ID || 'myAppId',
   masterKey: process.env.MASTER_KEY || 'myMasterKey', //Add your master key here. Keep it secret!
   clientKey: process.env.CLIENT_KEY || 'myClientKey',
   restAPIKey: process.env.REST_API_KEY || 'myRestApiKey',
   javascriptKey: process.env.JAVASCRIPT_KEY || 'myJavascriptKey',
-  serverURL: process.env.SERVER_URL || 'http://localhost:1337/parse', // Don't forget to change to https if needed
+  serverURL: process.env.SERVER_URL || 'https://localhost:1337/parse', // Don't forget to change to https if needed
   
   // -- الإعدادات العامة للأذونات --
   // هذا الإعداد يسمح لجميع المستخدمين بقراءة جميع الكائنات بشكل افتراضي
