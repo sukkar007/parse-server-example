@@ -230,12 +230,12 @@ function openRoom(params) {
 
 function allUrl() {
     if (location.protocol === 'https:') {
-        if (location.origin === 'https://flamingochat.net') {
-            return 'https://flamingochat.net'
+        if (location.origin === 'https://parse-server-example-o1ht.onrender.com/public') {
+            return 'https://parse-server-example-o1ht.onrender.com/public'
         } else {
-            return 'https://flamingochat.net'
+            return 'https://parse-server-example-o1ht.onrender.com/public'
         }
     } else {
-        return 'https://flamingochat.net'
+        return 'https://parse-server-example-o1ht.onrender.com/public'
     }
 }
