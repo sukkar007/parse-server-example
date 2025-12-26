@@ -33,6 +33,30 @@ var status = 0; // 0 يمكن النقر, 1 جاري السحب, 2 تم السح
 var currentGold = 1;
 var hideLock = false;
 
+// خريطة الفواكه - هذا مهم!
+var fruitMap = {
+    'g': 6,
+    'h': 7,
+    'a': 8,
+    'b': 1,
+    'c': 2,
+    'd': 3,
+    'e': 4,
+    'f': 5
+};
+
+// خريطة عكسية للبحث عن الحرف من الرقم
+var reverseFruitMap = {
+    6: 'g',
+    7: 'h',
+    8: 'a',
+    1: 'b',
+    2: 'c',
+    3: 'd',
+    4: 'e',
+    5: 'f'
+};
+
 // تخزين callbacks للطلبات المعلقة
 var pendingRequests = {};
 var requestIdCounter = 0;
@@ -131,69 +155,103 @@ function hideHand() {
 }
 
 function showResult(result, topList, winGold, avatar) {
-    console.log("Showing result - avatar URL:", avatar);
+    console.log("Showing result:", {
+        result: result,
+        winGold: winGold,
+        avatar: avatar,
+        topListLength: topList ? topList.length : 0
+    });
     
     $(".reword").show();
+    
+    var fruitNumber = searchGift(result);
+    console.log("Fruit number for result:", fruitNumber);
+    
     if (winGold && winGold > 0) {
         $(".prize").show();
+        $(".noPrize").hide();
+        
         $(".reword_word>div:first-child>div:last-child")[0].innerHTML = formatNumber(winGold);
         
         // عرض صورة المستخدم الفائز
         var selfImg = $(".prize .self img")[0];
         if (selfImg && avatar) {
             selfImg.src = fixImageUrl(avatar);
+            console.log("Setting user avatar to:", avatar);
         }
         
-        $(".reword_word>div img:last-child").attr(
-            "src",
-            getGiftImagePath(searchGift(result))
-        );
+        // عرض صورة الفاكهة الفائزة
+        var fruitImg = $(".reword_word>div img:last-child")[0];
+        if (fruitImg) {
+            var fruitImagePath = getGiftImagePath(fruitNumber);
+            fruitImg.src = fruitImagePath;
+            console.log("Setting winning fruit image to:", fruitImagePath);
+        }
     } else {
         $(".noPrize").show();
-        $(".noPrize>div img:last-child").attr(
-            "src",
-            getGiftImagePath(searchGift(result))
-        );
+        $(".prize").hide();
+        
+        // عرض صورة الفاكهة الفائزة في noPrize
+        var noPrizeImg = $(".noPrize>div img:last-child")[0];
+        if (noPrizeImg) {
+            var fruitImagePath = getGiftImagePath(fruitNumber);
+            noPrizeImg.src = fruitImagePath;
+            console.log("Setting noPrize fruit image to:", fruitImagePath);
+        }
     }
     
+    // تحديث نص الجولة
     if (info.lang == "ar") {
         $(".reword .roundWord").html("جولة " + (round - 1) + " النتيجة");
     } else {
         $(".reword .roundWord").html("The result of " + (round - 1) + " round:");
     }
     
+    // عرض الفائزين الثلاثة الأوائل
     var innerHTML = "";
-    for (var i = 0; i < topList.length; i++) {
-        var userAvatar = fixImageUrl(topList[i].avatar);
-        innerHTML +=
-            '<div class="personItem"><div class="logoArea"><div class="logo"><img src="' +
-            userAvatar +
-            '" alt=""></div> <img class="no' +
-            (i + 1) +
-            '" src="images/no' +
-            (i + 1) +
-            '.png" alt=""></div><div class="nick">' +
-            topList[i].nick +
-            '</div><div class="flex ac jc"><img src="images/gold.png" alt=""><div>' +
-            formatNumber(topList[i].total) +
-            "</div></div></div>";
+    if (topList && topList.length > 0) {
+        for (var i = 0; i < Math.min(topList.length, 3); i++) {
+            var userAvatar = fixImageUrl(topList[i].avatar);
+            innerHTML +=
+                '<div class="personItem"><div class="logoArea"><div class="logo"><img src="' +
+                userAvatar +
+                '" alt=""></div> <img class="no' +
+                (i + 1) +
+                '" src="images/no' +
+                (i + 1) +
+                '.png" alt=""></div><div class="nick">' +
+                (topList[i].nick || 'Unknown') +
+                '</div><div class="flex ac jc"><img src="images/gold.png" alt=""><div>' +
+                formatNumber(topList[i].total || 0) +
+                "</div></div></div>";
+        }
     }
-    for (var i = 0; i < 3 - topList.length; i++) {
+    
+    // إذا كان هناك أقل من 3 فائزين، أضف عناصر فارغة
+    var winnerCount = topList ? Math.min(topList.length, 3) : 0;
+    for (var i = winnerCount; i < 3; i++) {
         innerHTML +=
             '<div class="personItem"><div class="logoArea"><div class="logo"><img src="" alt=""></div></div><div class="nick"></div><div class="flex ac jc"></div></div>';
     }
+    
     $(".reword_person").html(innerHTML);
+    
+    // بدء عد تنازلي للإغلاق
+    if (resultTimer) clearInterval(resultTimer);
+    resultCount = 5;
     
     resultTimer = setInterval(function() {
         resultCount--;
-        if (resultCount < 0) {
-            resultCount = 5;
+        if (resultCount <= 0) {
             clearInterval(resultTimer);
             $(".reword").hide();
             $(".prize").hide();
             $(".noPrize").hide();
         }
-        $(".reword .reword_content .countDown")[0].innerHTML = resultCount + "s";
+        var countDownElement = $(".reword .reword_content .countDown")[0];
+        if (countDownElement) {
+            countDownElement.innerHTML = resultCount + "s";
+        }
     }, 1000);
 }
 
@@ -242,12 +300,14 @@ function sureClick(choice, index) {
                 selectArr.push(choice);
             }
 
-            var list = [6, 7, 8, 1, 2, 3, 4, 5];
-            var tempElement = $(`.item${list[index]} .selected div:nth-child(2) div`)[0];
+            var fruitNumber = searchGift(choice);
+            console.log("Fruit number for choice", choice, "is", fruitNumber);
+            
+            var tempElement = $(`.item${fruitNumber} .selected div:nth-child(2) div`)[0];
             if (tempElement) {
                 var temp = tempElement.innerHTML.replace(/,/g, '');
                 tempElement.innerHTML = formatNumber(parseInt(temp) + parseInt(currentGold));
-                $(`.item${list[index]} .selected`).show();
+                $(`.item${fruitNumber} .selected`).show();
             }
 
             // تحديث الرصيد من الاستجابة
@@ -427,7 +487,7 @@ function bindEvent() {
  * إصلاح مسار الصور
  */
 function fixImageUrl(url) {
-    if (!url) return '';
+    if (!url) return 'images/default_avatar.png';
     
     // إذا كان الرابط يحتوي على domain، اتركه كما هو
     if (url.startsWith('http://') || url.startsWith('https://')) {
@@ -436,7 +496,6 @@ function fixImageUrl(url) {
     
     // إذا كان الرابط يبدأ بـ /، أضف domain إذا لزم الأمر
     if (url.startsWith('/')) {
-        // يمكنك تغيير هذا الرابط إلى domain الخاص بك
         return window.location.origin + url;
     }
     
@@ -448,6 +507,10 @@ function fixImageUrl(url) {
  * الحصول على مسار صورة الفاكهة
  */
 function getGiftImagePath(fruitNumber) {
+    if (!fruitNumber || fruitNumber < 1 || fruitNumber > 8) {
+        console.warn("Invalid fruit number:", fruitNumber);
+        return 'images/gift_1.png'; // صورة افتراضية
+    }
     return 'images/gift_' + fruitNumber + '.png';
 }
 
@@ -471,43 +534,33 @@ function formatNumber(num) {
 }
 
 /**
- * البحث عن رقم الفاكهة من الحرف
+ * البحث عن رقم الفاكهة من الحرف - محسنة!
  */
 function searchGift(value) {
-    if (!value) return 1;
+    if (!value) {
+        console.warn("searchGift: No value provided");
+        return 1;
+    }
     
     console.log("searchGift searching for:", value);
     
-    var temp = -1;
-    for (var i = 0; i < choiceList.length; i++) {
-        if (value == choiceList[i]) {
-            temp = i;
-            break;
-        }
-    }
+    // تحقق في الخريطة مباشرة
+    var result = fruitMap[value];
     
-    console.log("Found at index:", temp);
-    
-    if (temp === -1) {
-        console.warn("Invalid fruit value:", value);
+    if (!result) {
+        console.warn("Invalid fruit value:", value, "valid values:", Object.keys(fruitMap));
         return 1; // قيمة افتراضية
     }
     
-    // هذه الخريطة تحول من الحرف إلى الرقم الصحيح
-    var fruitMap = {
-        'g': 6,
-        'h': 7,
-        'a': 8,
-        'b': 1,
-        'c': 2,
-        'd': 3,
-        'e': 4,
-        'f': 5
-    };
-    
-    var result = fruitMap[value] || 1;
     console.log("Mapped fruit", value, "to number:", result);
     return result;
+}
+
+/**
+ * البحث عن حرف الفاكهة من الرقم (إذا لزم الأمر)
+ */
+function getFruitChar(number) {
+    return reverseFruitMap[number] || 'b';
 }
 
 /**
@@ -590,7 +643,13 @@ function getInfo(_round, isChoice) {
     callFlutterApp('game_info', params).then(function(res) {
         console.log("Info response:", res);
         if (res.code === 200 && res.data) {
-            if (res.data.countdown && res.data.countdown < 0) {
+            // التحقق من صحة الاستجابة
+            if (res.data.countdown === undefined) {
+                console.error("Invalid response data:", res.data);
+                return;
+            }
+            
+            if (res.data.countdown < 0) {
                 showSuccess(info.lang == "ar" ? "خطأ في النظام، جاري إعادة الاتصال..." : "System Error, reconnecting...");
                 
                 clearAllTimers();
@@ -636,28 +695,31 @@ function getInfo(_round, isChoice) {
             $(".title1").show();
 
             // نتيجة الجولة السابقة
-            if (res.data.result && res.data.result != "") {
+            if (res.data.result) {
                 var fruitNumber = searchGift(res.data.result);
                 console.log("Previous winning fruit:", res.data.result, "mapped to number:", fruitNumber);
                 
+                // إضافة active للفاكهة الفائزة
                 $(".item" + fruitNumber).addClass("active");
                 
+                // تحديث صورة الفاكهة في noPrize1
                 var noPrizeImg = $(".noPrize1>div img:last-child")[0];
                 if (noPrizeImg) {
-                    noPrizeImg.setAttribute(
-                        "src",
-                        getGiftImagePath(fruitNumber)
-                    );
+                    noPrizeImg.src = getGiftImagePath(fruitNumber);
+                    console.log("Updated noPrize1 image to fruit", fruitNumber);
                 }
             }
 
             // قائمة النتائج
             var giftListHtml = "";
-            var resultList = (res.data.resultList || []).reverse();
+            var resultList = res.data.resultList || [];
             console.log("Result list:", resultList);
             
-            for (var i = 0; i < resultList.length; i++) {
-                var fruitNumber = searchGift(resultList[i]);
+            // عكس القائمة لعرض الأحدث أولاً
+            var reversedList = resultList.slice().reverse();
+            
+            for (var i = 0; i < reversedList.length; i++) {
+                var fruitNumber = searchGift(reversedList[i]);
                 if (i == 0) {
                     giftListHtml +=
                         '<div class="giftItem"><img src="' +
@@ -678,7 +740,7 @@ function getInfo(_round, isChoice) {
             }
 
             // عرض الرهانات الحالية
-            if (res.data.select && Object.keys(res.data.select).length) {
+            if (res.data.select && Object.keys(res.data.select).length > 0) {
                 var ak = Object.keys(res.data.select);
                 var vk = Object.values(res.data.select);
                 console.log("Current bets:", res.data.select);
@@ -703,38 +765,46 @@ function getInfo(_round, isChoice) {
                 }
             }
 
-            // عرض النتيجة
-            if (_round && res.data.top && res.data.top.length) {
-                console.log("Showing top winners:", res.data.top);
-                showResult(
-                    res.data.result,
-                    res.data.top,
-                    res.data.winGold,
-                    res.data.avatar
-                );
-            } else if (_round) {
-                var roundWordElement = $(".rewordNo .roundWord")[0];
-                if (roundWordElement) {
-                    if (info.lang == "ar") {
-                        roundWordElement.innerHTML = "جولة " + (round - 1) + " النتيجة";
-                    } else {
-                        roundWordElement.innerHTML = "The result of " + (round - 1) + " round:";
-                    }
-                }
+            // عرض النتيجة إذا كانت هناك جولة سابقة
+            if (_round) {
+                console.log("Previous round result data:", {
+                    result: res.data.result,
+                    top: res.data.top,
+                    winGold: res.data.winGold,
+                    avatar: res.data.avatar
+                });
                 
-                resultTimer = setInterval(function() {
-                    resultCount--;
-                    if (resultCount < 0) {
-                        resultCount = 5;
-                        clearInterval(resultTimer);
-                        $(".rewordNo").hide();
+                if (res.data.top && res.data.top.length > 0) {
+                    console.log("Showing top winners:", res.data.top);
+                    showResult(
+                        res.data.result,
+                        res.data.top,
+                        res.data.winGold || 0,
+                        res.data.avatar || ''
+                    );
+                } else {
+                    // لا يوجد فائزين، عرض noPrize
+                    console.log("No winners for this round");
+                    if (info.lang == "ar") {
+                        $(".rewordNo .roundWord").html("جولة " + (round - 1) + " النتيجة");
+                    } else {
+                        $(".rewordNo .roundWord").html("The result of " + (round - 1) + " round:");
                     }
-                    var countDownElement = $(".rewordNo .reword_content .countDown")[0];
-                    if (countDownElement) {
-                        countDownElement.innerHTML = resultCount + "s";
-                    }
-                }, 1000);
-                $(".rewordNo").show();
+                    
+                    resultTimer = setInterval(function() {
+                        resultCount--;
+                        if (resultCount < 0) {
+                            resultCount = 5;
+                            clearInterval(resultTimer);
+                            $(".rewordNo").hide();
+                        }
+                        var countDownElement = $(".rewordNo .reword_content .countDown")[0];
+                        if (countDownElement) {
+                            countDownElement.innerHTML = resultCount + "s";
+                        }
+                    }, 1000);
+                    $(".rewordNo").show();
+                }
             }
         }
     }).catch(function(error) {
@@ -748,13 +818,12 @@ function getBill() {
         console.log("Bill response:", res);
         if (res.code == 200 && res.data) {
             var innerHTML = "";
-            var list = [6, 7, 8, 1, 2, 3, 4, 5];
             
             for (var i = 0; i < res.data.length; i++) {
                 var tempItem = res.data[i];
                 var isWin = tempItem.choice == tempItem.result;
                 var choiceNumber = searchGift(tempItem.choice);
-                var resultNumber = searchGift(tempItem.result);
+                var resultNumber = searchGift(tempItem.result || 'b'); // افتراضي إذا لم تكن هناك نتيجة
                 
                 innerHTML +=
                     '<div class="records-list-item flex ac js"><div class="inner-item">' +
@@ -805,9 +874,9 @@ function getRank() {
                         '" src="images/no' +
                         (i + 1) +
                         '.png" alt=""></div><div class="nick">' +
-                        item.nick +
+                        (item.nick || 'Unknown') +
                         '</div><div class="flex ac jc"><img src="images/gold.png" alt=""><div>' +
-                        formatNumber(item.total) +
+                        formatNumber(item.total || 0) +
                         "</div></div></div>";
                 } else {
                     innerHTML +=
@@ -816,9 +885,9 @@ function getRank() {
                         '</div><div class="inner-item"><div class="logo"><img src="' +
                         avatarUrl +
                         '" alt=""></div></div><div class="inner-item">' +
-                        item.nick +
+                        (item.nick || 'Unknown') +
                         '</div><div class="inner-item"><img src="images/gold.png" alt=""><div>' +
-                        formatNumber(item.total) +
+                        formatNumber(item.total || 0) +
                         "</div></div></div>";
                 }
             }
@@ -924,4 +993,18 @@ window.updateBalance = function(newBalance) {
         balanceElement.innerHTML = formatNumber(parseFloat(newBalance).toFixed(2));
     }
     info.credits = newBalance;
+};
+
+// دالة مساعدة للفحص
+window.debugGame = function() {
+    console.log("=== GAME DEBUG INFO ===");
+    console.log("info:", info);
+    console.log("round:", round);
+    console.log("status:", status);
+    console.log("currentGold:", currentGold);
+    console.log("selectArr:", selectArr);
+    console.log("selectCount:", selectCount);
+    console.log("fruitMap:", fruitMap);
+    console.log("Number of .item elements:", $(".item").length);
+    console.log("=== END DEBUG ===");
 };
