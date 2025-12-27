@@ -1,12 +1,13 @@
 /**
- * لعبة عجلة الفواكه - نسخة محسّنة نهائية
+ * لعبة عجلة الفواكه - نسخة محسّنة نهائية شاملة
  * الاتصال الآمن مع Parse Cloud Functions عبر Flutter WebView
  * 
- * الإصلاحات النهائية:
- * 1. إصلاح استخراج صور المستخدمين من JSON objects
- * 2. إصلاح عرض صورة آخر فاكهة رابحة
- * 3. إصلاح عرض صور الفائزين الثلاثة
- * 4. إصلاح مشكلة ظهور الفائز مرتين
+ * الإصلاحات الشاملة:
+ * 1. إصلاح عرض صورة المستخدم عند إعلان النتيجة
+ * 2. إصلاح تسجيل آخر فاكهة رابحة في الشريط
+ * 3. إصلاح استخراج الصور من JSON و URL المباشر
+ * 4. إصلاح عرض صور الفائزين
+ * 5. إصلاح مشكلة ظهور الفائز مرتين
  */
 
 // معلومات اللاعب - سيتم حقنها من Flutter
@@ -35,7 +36,7 @@ var timesWord = [5, 5, 10, 15, 25, 45, 5, 5];
 var goldList = [1, 10, 100, 1000, 10000];
 var resultCount = 5;
 var choiceList = ["g", "h", "a", "b", "c", "d", "e", "f"];
-var status = 0; // 0 يمكن النقر, 1 جاري السحب, 2 تم السحب
+var status = 0;
 var currentGold = 1;
 var hideLock = false;
 
@@ -60,24 +61,20 @@ var lastWinningFruit = null;
 
 console.log("Player Info received from Flutter:", info);
 
-// استلام معلومات اللاعب من Flutter
 if (window.flamingoPlayerInfo) {
     console.log("Player info received on load:", info);
     init();
 }
 
-// استقبال تحديثات معلومات اللاعب من Flutter
 window.onFlamingoPlayerInfo = function(playerInfo) {
     info = playerInfo;
     console.log("Player info updated:", info);
     
-    // تحديث الرصيد في الواجهة
     if ($('.balanceCount').length > 0) {
         $('.balanceCount').text(formatNumber(parseFloat(info.credits).toFixed(2)));
     }
 };
 
-// استقبال الاستجابات من Flutter
 window.onFlamingoResponse = function(response) {
     console.log("Received response from Flutter:", response);
     
@@ -94,7 +91,6 @@ window.onFlamingoResponse = function(response) {
     }
 };
 
-// تهيئة التطبيق
 $(document).ready(function() {
     console.log("Document ready - Flutter WebView Version");
     
@@ -150,18 +146,18 @@ function hideHand() {
 }
 
 /**
- * إصلاح استخراج صور المستخدمين من JSON objects
- * يدعم: URL مباشر، JSON object مع url، Parse File object
+ * دالة محسّنة لاستخراج صور المستخدمين
+ * تدعم: URL مباشر، JSON object، JSON string، Parse File object
  */
 function extractImageUrl(avatarData) {
-    console.log("extractImageUrl input:", avatarData, "type:", typeof avatarData);
+    console.log("🔍 extractImageUrl input:", avatarData, "type:", typeof avatarData);
     
     if (!avatarData) {
         console.log("❌ No avatar data provided");
         return 'images/default_avatar.png';
     }
     
-    // إذا كان string
+    // إذا كان URL مباشر (الحالة الأساسية من الخادم)
     if (typeof avatarData === 'string') {
         // URL مباشر
         if (avatarData.startsWith('http://') || avatarData.startsWith('https://')) {
@@ -170,21 +166,18 @@ function extractImageUrl(avatarData) {
         }
         
         // محاولة تحليل كـ JSON
-        try {
-            var parsed = JSON.parse(avatarData);
-            console.log("✅ Parsed JSON:", parsed);
-            
-            if (parsed && parsed.url) {
-                console.log("✅ URL extracted from JSON:", parsed.url);
-                return parsed.url;
+        if (avatarData.includes('{') && avatarData.includes('}')) {
+            try {
+                var parsed = JSON.parse(avatarData);
+                console.log("✅ Parsed JSON:", parsed);
+                
+                if (parsed && parsed.url) {
+                    console.log("✅ URL extracted from JSON:", parsed.url);
+                    return parsed.url;
+                }
+            } catch (e) {
+                console.log("⚠️ Failed to parse JSON:", e.message);
             }
-            
-            if (parsed && parsed.name) {
-                console.log("⚠️ Found name but no URL:", parsed.name);
-                return parsed.url || avatarData;
-            }
-        } catch (e) {
-            console.log("⚠️ Not JSON, treating as filename");
         }
         
         // إذا كان مجرد اسم ملف
@@ -195,7 +188,7 @@ function extractImageUrl(avatarData) {
     }
     
     // إذا كان object
-    if (typeof avatarData === 'object') {
+    if (typeof avatarData === 'object' && avatarData !== null) {
         console.log("✅ Object detected:", avatarData);
         
         if (avatarData.url) {
@@ -225,7 +218,7 @@ function showResult(result, topList, winGold, avatar) {
     console.log("الفاكهة الفائزة:", result);
     console.log("قائمة الفائزين (أول 3):", topList);
     console.log("مكسب المستخدم الحالي:", winGold);
-    console.log("صورة المستخدم الحالي:", avatar);
+    console.log("صورة المستخدم الحالي (avatar):", avatar);
     
     // حفظ آخر فاكهة رابحة
     lastWinningFruit = result;
@@ -266,8 +259,8 @@ function showResult(result, topList, winGold, avatar) {
         for (var i = 0; i < Math.min(topList.length, 3); i++) {
             var winner = topList[i];
             
-            // تجنب التكرار - تحقق من أن المستخدم لم يتم معالجته من قبل
-            var winnerKey = winner.uid || winner.userId || winner.objectId;
+            // تجنب التكرار
+            var winnerKey = winner.uid || winner.userId || winner.objectId || winner.nick;
             if (processedWinners.indexOf(winnerKey) !== -1) {
                 console.log(`⚠️ تخطي الفائز المكرر: ${winnerKey}`);
                 continue;
@@ -340,13 +333,18 @@ function showResult(result, topList, winGold, avatar) {
             console.log("🎉 المستخدم الحالي فائز! المكسب:", currentUserWinAmount);
             $(".reword_word>div:first-child>div:last-child")[0].innerHTML = formatNumber(currentUserWinAmount);
             
-            // عرض صورة المستخدم الفائز
+            // ✅ إصلاح: عرض صورة المستخدم الفائز باستخدام avatar من الخادم
             var selfImg = $(".prize .self img")[0];
-            if (selfImg && info.avatar) {
-                var userAvatarUrl = extractImageUrl(info.avatar);
+            if (selfImg) {
+                // استخدام avatar من الخادم (URL مباشر)
+                var userAvatarUrl = avatar || extractImageUrl(info.avatar);
+                console.log("🖼️ محاولة عرض صورة المستخدم الفائز:", userAvatarUrl);
                 selfImg.src = userAvatarUrl;
-                selfImg.onerror = function() { this.src = 'images/default_avatar.png'; };
-                console.log("✅ صورة المستخدم الفائز:", userAvatarUrl);
+                selfImg.onerror = function() { 
+                    console.log("❌ فشل تحميل الصورة، عرض الصورة الافتراضية");
+                    this.src = 'images/default_avatar.png'; 
+                };
+                console.log("✅ صورة المستخدم الفائز تم تعيينها:", userAvatarUrl);
             }
         } else {
             console.log("😢 المستخدم الحالي ليس من الفائزين");
@@ -360,7 +358,6 @@ function showResult(result, topList, winGold, avatar) {
         
     } else {
         console.log("😢 لا يوجد فائزون، عرض noPrize");
-        // لا يوجد فائزون
         $(".reword").show();
         $(".noPrize").show();
         $(".prize").hide();
@@ -382,7 +379,6 @@ function showResult(result, topList, winGold, avatar) {
             $(".noPrize .roundWord").html("The result of " + (round - 1) + " round:");
         }
         
-        // إخفاء منطقة الفائزين
         $(".reword_person").html("");
     }
     
@@ -431,21 +427,17 @@ function openDraw() {
 function sureClick(choice, index) {
     console.log("sureClick called - choice:", choice, "index:", index);
     
-    // التحقق من الرصيد
     let currentBalance = parseFloat($('.balanceCount').text().replace(/,/g, ''));
     if (currentBalance < currentGold) {
         showSuccess(info.lang == "ar" ? "رصيد غير كافٍ!" : "Insufficient balance!");
         return;
     }
 
-    // تحديث الرصيد مؤقتاً مع feedback فوري
     $('.balanceCount').text(formatNumber((currentBalance - currentGold).toFixed(2)));
     
-    // إضافة تأثير بصري فوري على الفاكهة المختارة
     var fruitNumber = searchGift(choice);
     $(`.item${fruitNumber}`).addClass("active");
     
-    // عرض رسالة تحميل سريعة
     var tempElement = $(`.item${fruitNumber} .selected div:nth-child(2) div`)[0];
     if (tempElement) {
         var temp = tempElement.innerHTML.replace(/,/g, '');
@@ -453,7 +445,6 @@ function sureClick(choice, index) {
         $(`.item${fruitNumber} .selected`).show();
     }
 
-    // إرسال الطلب إلى Flutter بدون انتظار الاستجابة للعرض الفوري
     callFlutterApp('game_choice', {
         choice: choice,
         gold: currentGold
@@ -465,25 +456,20 @@ function sureClick(choice, index) {
                 selectArr.push(choice);
             }
 
-            // تحديث الرصيد من الاستجابة
             if (res.balance !== undefined) {
                 $('.balanceCount').text(formatNumber(parseFloat(res.balance).toFixed(2)));
-                // تحديث معلومات اللاعب
                 if (info.credits !== undefined) {
                     info.credits = res.balance;
                 }
             }
         } else if (res.code == 10062) {
             showSuccess(info.lang == "ar" ? "يرجى الشحن" : "Please recharge");
-            // إعادة الرصيد
             $('.balanceCount').text(formatNumber(currentBalance.toFixed(2)));
-            // إزالة التأثير البصري
             $(`.item${fruitNumber}`).removeClass("active");
             tempElement.innerHTML = formatNumber(parseInt(tempElement.innerHTML.replace(/,/g, '')) - parseInt(currentGold));
         } else {
             showSuccess(res.message || 'Error');
             $('.balanceCount').text(formatNumber(currentBalance.toFixed(2)));
-            // إزالة التأثير البصري
             $(`.item${fruitNumber}`).removeClass("active");
             tempElement.innerHTML = formatNumber(parseInt(tempElement.innerHTML.replace(/,/g, '')) - parseInt(currentGold));
         }
@@ -491,7 +477,6 @@ function sureClick(choice, index) {
         console.error("Choice error:", error);
         showSuccess(info.lang == "ar" ? "خطأ في النظام" : "System Error");
         $('.balanceCount').text(formatNumber(currentBalance.toFixed(2)));
-        // إزالة التأثير البصري
         $(`.item${fruitNumber}`).removeClass("active");
         if (tempElement) {
             tempElement.innerHTML = formatNumber(parseInt(tempElement.innerHTML.replace(/,/g, '')) - parseInt(currentGold));
@@ -550,7 +535,6 @@ function roll(dir) {
 function bindEvent() {
     console.log("Binding events...");
     
-    // أحداث اختيار قيمة الذهب
     $(".clickArea .clickItem").click(function() {
         console.log("Gold item clicked");
         $(".clickItem").removeClass("active");
@@ -560,19 +544,16 @@ function bindEvent() {
         console.log("Selected gold:", currentGold);
     });
     
-    // أحداث النقر على الفواكه
     $(".item").click(function() {
         console.log("Fruit item clicked, status:", status);
         if (status == 0) {
             var index = $(this).data("index");
             console.log("Item index:", index);
             
-            // إزالة active من جميع الفواكه
             for (var i = 0; i < $(".item").length; i++) {
                 $(".item" + (i + 1)).removeClass("active");
             }
             
-            // التحقق من الحد الأقصى للاختيارات
             console.log("selectCount:", selectCount, "selectArr:", selectArr);
             
             var isHas = false;
@@ -592,7 +573,6 @@ function bindEvent() {
         }
     });
     
-    // أحداث الأزرار الجانبية
     $(".records").click(function() {
         console.log("Records clicked");
         getBill();
@@ -626,7 +606,6 @@ function bindEvent() {
         e.stopPropagation();
     });
 
-    // التعامل مع إخفاء/إظهار الصفحة
     try {
         document.addEventListener("visibilitychange", function() {
             if (document.hidden) {
@@ -649,16 +628,10 @@ function bindEvent() {
     console.log("Events bound successfully");
 }
 
-/**
- * إصلاح مسار الصور
- */
 function fixImageUrl(url) {
     return extractImageUrl(url);
 }
 
-/**
- * الحصول على مسار صورة الفاكهة
- */
 function getGiftImagePath(fruitNumber) {
     if (!fruitNumber || fruitNumber < 1 || fruitNumber > 8) {
         console.warn("Invalid fruit number:", fruitNumber);
@@ -667,9 +640,6 @@ function getGiftImagePath(fruitNumber) {
     return 'images/gift_' + fruitNumber + '.png';
 }
 
-/**
- * تنسيق الأرقام بفواصل
- */
 function formatNumber(num) {
     if (num === null || num === undefined || num === '') return '0';
     var numStr = num.toString();
@@ -684,9 +654,6 @@ function formatNumber(num) {
     return integerPart + decimalPart;
 }
 
-/**
- * البحث عن رقم الفاكهة من الحرف
- */
 function searchGift(value) {
     if (!value) {
         console.warn("searchGift: No value provided");
@@ -706,9 +673,6 @@ function searchGift(value) {
     return result;
 }
 
-/**
- * دالة للاتصال بـ Flutter
- */
 function callFlutterApp(action, params) {
     return new Promise(function(resolve, reject) {
         var requestId = 'req_' + (++requestIdCounter) + '_' + Date.now();
@@ -752,9 +716,6 @@ function callFlutterApp(action, params) {
     });
 }
 
-/**
- * إرسال رسالة بسيطة إلى Flutter
- */
 function sendToFlutter(data) {
     try {
         if (window.FlamingoApp && typeof window.FlamingoApp.postMessage === 'function') {
@@ -770,7 +731,7 @@ function sendToFlutter(data) {
 }
 
 /**
- * دالة getInfo محسّنة لعرض آخر فاكهة رابحة بشكل صحيح
+ * ✅ إصلاح: دالة getInfo محسّنة لتسجيل آخر فاكهة رابحة في الشريط
  */
 function getInfo(_round, isChoice) {
     console.log("Getting game info...");
@@ -800,7 +761,6 @@ function getInfo(_round, isChoice) {
                 return;
             }
 
-            // تحديث واجهة المستخدم
             var balanceCount = $(".balanceCount")[0];
             if (balanceCount) {
                 balanceCount.innerHTML = formatNumber(parseFloat(res.data.gold).toFixed(2));
@@ -833,10 +793,10 @@ function getInfo(_round, isChoice) {
             $(".title2").hide();
             $(".title1").show();
 
-            // نتيجة الجولة السابقة - إصلاح لعرض آخر فاكهة رابحة بشكل صحيح
+            // ✅ إصلاح: تحديث آخر فاكهة رابحة في الشريط
             if (res.data.result) {
                 var fruitNumber = searchGift(res.data.result);
-                console.log("Previous winning fruit:", res.data.result, "mapped to number:", fruitNumber);
+                console.log("🎯 Previous winning fruit:", res.data.result, "mapped to number:", fruitNumber);
                 
                 // حفظ آخر فاكهة رابحة
                 lastWinningFruit = res.data.result;
@@ -844,7 +804,7 @@ function getInfo(_round, isChoice) {
                 // إضافة active للفاكهة الفائزة
                 $(".item" + fruitNumber).addClass("active");
                 
-                // تحديث صورة الفاكهة في noPrize1 - استخدام الفاكهة الأخيرة
+                // تحديث صورة الفاكهة في noPrize1
                 var noPrizeImg = $(".noPrize1>div img:last-child")[0];
                 if (noPrizeImg) {
                     var fruitImagePath = getGiftImagePath(fruitNumber);
@@ -853,21 +813,25 @@ function getInfo(_round, isChoice) {
                 }
             }
 
-            // قائمة النتائج - عرض آخر فاكهة رابحة أولاً
+            // ✅ إصلاح: تحديث قائمة النتائج (الشريط) بشكل صحيح
             var giftListHtml = "";
             var resultList = res.data.resultList || [];
-            console.log("Result list:", resultList);
+            console.log("📊 Result list from server:", resultList);
             
             // عكس القائمة لعرض الأحدث أولاً
             var reversedList = resultList.slice().reverse();
             
             for (var i = 0; i < reversedList.length; i++) {
                 var fruitNumber = searchGift(reversedList[i]);
+                console.log(`📍 Result ${i}: ${reversedList[i]} -> fruit number ${fruitNumber}`);
+                
                 if (i == 0) {
+                    // أول عنصر يحصل على شارة "جديد"
                     giftListHtml +=
                         '<div class="giftItem"><img src="' +
                         getGiftImagePath(fruitNumber) +
                         '" alt=""><img src="images/new.png" alt=""></div>';
+                    console.log("✅ Added latest result with 'new' badge");
                 } else {
                     giftListHtml +=
                         '<div class="giftItem"><img src="' +
@@ -875,7 +839,10 @@ function getInfo(_round, isChoice) {
                         '" alt=""></div>';
                 }
             }
+            
+            // تحديث الشريط
             $(".giftList").html(giftListHtml);
+            console.log("✅ Gift list updated successfully");
 
             if (_round) {
                 clearInterval(handTimer);
