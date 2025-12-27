@@ -1,11 +1,12 @@
 /**
- * لعبة عجلة الفواكه - نسخة Parse Server محسّنة
+ * لعبة عجلة الفواكه - نسخة محسّنة نهائية
  * الاتصال الآمن مع Parse Cloud Functions عبر Flutter WebView
  * 
- * الإصلاحات:
- * 1. تحسين سرعة الاستجابة عند النقر مع feedback فوري
- * 2. إصلاح استخراج صور المستخدمين من JSON objects
- * 3. إصلاح عرض آخر فاكهة رابحة بشكل صحيح
+ * الإصلاحات النهائية:
+ * 1. إصلاح استخراج صور المستخدمين من JSON objects
+ * 2. إصلاح عرض صورة آخر فاكهة رابحة
+ * 3. إصلاح عرض صور الفائزين الثلاثة
+ * 4. إصلاح مشكلة ظهور الفائز مرتين
  */
 
 // معلومات اللاعب - سيتم حقنها من Flutter
@@ -38,7 +39,7 @@ var status = 0; // 0 يمكن النقر, 1 جاري السحب, 2 تم السح
 var currentGold = 1;
 var hideLock = false;
 
-// خريطة الفواكه - هذا مهم!
+// خريطة الفواكه
 var fruitMap = {
     'g': 6,
     'h': 7,
@@ -97,11 +98,9 @@ window.onFlamingoResponse = function(response) {
 $(document).ready(function() {
     console.log("Document ready - Flutter WebView Version");
     
-    // انتظار معلومات اللاعب من Flutter
     if (window.flamingoPlayerInfo) {
         init();
     } else {
-        // انتظار قصير ثم المحاولة
         setTimeout(function() {
             if (window.flamingoPlayerInfo) {
                 init();
@@ -155,41 +154,69 @@ function hideHand() {
  * يدعم: URL مباشر، JSON object مع url، Parse File object
  */
 function extractImageUrl(avatarData) {
-    if (!avatarData) return 'images/default_avatar.png';
+    console.log("extractImageUrl input:", avatarData, "type:", typeof avatarData);
     
-    // إذا كان URL مباشر
+    if (!avatarData) {
+        console.log("❌ No avatar data provided");
+        return 'images/default_avatar.png';
+    }
+    
+    // إذا كان string
     if (typeof avatarData === 'string') {
+        // URL مباشر
         if (avatarData.startsWith('http://') || avatarData.startsWith('https://')) {
+            console.log("✅ Direct URL found:", avatarData);
             return avatarData;
         }
         
         // محاولة تحليل كـ JSON
         try {
             var parsed = JSON.parse(avatarData);
+            console.log("✅ Parsed JSON:", parsed);
+            
             if (parsed && parsed.url) {
+                console.log("✅ URL extracted from JSON:", parsed.url);
                 return parsed.url;
             }
+            
             if (parsed && parsed.name) {
-                // قد يكون Parse File object
+                console.log("⚠️ Found name but no URL:", parsed.name);
                 return parsed.url || avatarData;
             }
         } catch (e) {
-            // ليس JSON
+            console.log("⚠️ Not JSON, treating as filename");
         }
         
         // إذا كان مجرد اسم ملف
         if (avatarData && avatarData.length > 0) {
+            console.log("✅ Treating as filename:", avatarData);
             return 'images/' + avatarData;
         }
     }
     
     // إذا كان object
     if (typeof avatarData === 'object') {
+        console.log("✅ Object detected:", avatarData);
+        
         if (avatarData.url) {
+            console.log("✅ URL found in object:", avatarData.url);
             return avatarData.url;
+        }
+        
+        // محاولة تحويل إلى string ثم تحليل
+        try {
+            var stringified = JSON.stringify(avatarData);
+            var reparsed = JSON.parse(stringified);
+            if (reparsed && reparsed.url) {
+                console.log("✅ URL found after re-parsing:", reparsed.url);
+                return reparsed.url;
+            }
+        } catch (e) {
+            console.log("⚠️ Failed to re-parse object");
         }
     }
     
+    console.log("❌ No valid URL found, using default");
     return 'images/default_avatar.png';
 }
 
@@ -232,21 +259,37 @@ function showResult(result, topList, winGold, avatar) {
             $(".reword .roundWord").html("The result of " + (round - 1) + " round:");
         }
         
-        // بناء HTML للفائزين الثلاثة الأوائل
+        // بناء HTML للفائزين الثلاثة الأوائل - مع تجنب التكرار
         var topHTML = "";
+        var processedWinners = [];
+        
         for (var i = 0; i < Math.min(topList.length, 3); i++) {
             var winner = topList[i];
+            
+            // تجنب التكرار - تحقق من أن المستخدم لم يتم معالجته من قبل
+            var winnerKey = winner.uid || winner.userId || winner.objectId;
+            if (processedWinners.indexOf(winnerKey) !== -1) {
+                console.log(`⚠️ تخطي الفائز المكرر: ${winnerKey}`);
+                continue;
+            }
+            processedWinners.push(winnerKey);
+            
             console.log(`الفائز ${i + 1}:`, winner);
             
             var winnerAvatar = extractImageUrl(winner.avatar);
             var winnerName = winner.nick || winner.username || `الفائز ${i + 1}`;
             var winnerPrize = winner.total || winner.winGold || 0;
             
+            console.log(`✅ الفائز ${i + 1} - الاسم: ${winnerName}, الصورة: ${winnerAvatar}`);
+            
             topHTML += `
                 <div class="personItem">
                     <div class="logoArea">
                         <div class="logo">
-                            <img src="${winnerAvatar}" alt="${winnerName}" onerror="this.src='images/default_avatar.png'">
+                            <img src="${winnerAvatar}" 
+                                 alt="${winnerName}" 
+                                 onerror="this.src='images/default_avatar.png'"
+                                 style="width: 100%; height: 100%; object-fit: cover;">
                         </div>
                         <img class="no${i + 1}" src="images/no${i + 1}.png" alt="المركز ${i + 1}">
                     </div>
@@ -260,12 +303,12 @@ function showResult(result, topList, winGold, avatar) {
         }
         
         // إذا كان هناك أقل من 3 فائزين، أضف أماكن فارغة
-        for (var i = topList.length; i < 3; i++) {
+        for (var i = processedWinners.length; i < 3; i++) {
             topHTML += `
                 <div class="personItem">
                     <div class="logoArea">
                         <div class="logo">
-                            <img src="images/default_avatar.png" alt="لا يوجد">
+                            <img src="images/default_avatar.png" alt="لا يوجد" style="width: 100%; height: 100%; object-fit: cover;">
                         </div>
                     </div>
                     <div class="nick">---</div>
@@ -300,9 +343,10 @@ function showResult(result, topList, winGold, avatar) {
             // عرض صورة المستخدم الفائز
             var selfImg = $(".prize .self img")[0];
             if (selfImg && info.avatar) {
-                selfImg.src = extractImageUrl(info.avatar);
+                var userAvatarUrl = extractImageUrl(info.avatar);
+                selfImg.src = userAvatarUrl;
                 selfImg.onerror = function() { this.src = 'images/default_avatar.png'; };
-                console.log("✅ صورة المستخدم الفائز:", info.avatar);
+                console.log("✅ صورة المستخدم الفائز:", userAvatarUrl);
             }
         } else {
             console.log("😢 المستخدم الحالي ليس من الفائزين");
@@ -384,9 +428,6 @@ function openDraw() {
     getInfo(round);
 }
 
-/**
- * تحسين دالة sureClick لإضافة feedback فوري وتقليل البطء
- */
 function sureClick(choice, index) {
     console.log("sureClick called - choice:", choice, "index:", index);
     
@@ -519,7 +560,7 @@ function bindEvent() {
         console.log("Selected gold:", currentGold);
     });
     
-    // أحداث النقر على الفواكه - نفس طريقة ttii.js الأصلية
+    // أحداث النقر على الفواكه
     $(".item").click(function() {
         console.log("Fruit item clicked, status:", status);
         if (status == 0) {
@@ -621,7 +662,7 @@ function fixImageUrl(url) {
 function getGiftImagePath(fruitNumber) {
     if (!fruitNumber || fruitNumber < 1 || fruitNumber > 8) {
         console.warn("Invalid fruit number:", fruitNumber);
-        return 'images/gift_1.png'; // صورة افتراضية
+        return 'images/gift_1.png';
     }
     return 'images/gift_' + fruitNumber + '.png';
 }
@@ -632,21 +673,19 @@ function getGiftImagePath(fruitNumber) {
 function formatNumber(num) {
     if (num === null || num === undefined || num === '') return '0';
     var numStr = num.toString();
-    // إزالة أي فواصل موجودة
     numStr = numStr.replace(/,/g, '');
     
     var parts = numStr.split('.');
     var integerPart = parts[0];
     var decimalPart = parts.length > 1 ? '.' + parts[1] : '';
     
-    // إضافة فواصل كل 3 أرقام
     integerPart = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     
     return integerPart + decimalPart;
 }
 
 /**
- * البحث عن رقم الفاكهة من الحرف - محسنة!
+ * البحث عن رقم الفاكهة من الحرف
  */
 function searchGift(value) {
     if (!value) {
@@ -656,12 +695,11 @@ function searchGift(value) {
     
     console.log("searchGift searching for:", value);
     
-    // تحقق في الخريطة مباشرة
     var result = fruitMap[value];
     
     if (!result) {
         console.warn("Invalid fruit value:", value, "valid values:", Object.keys(fruitMap));
-        return 1; // قيمة افتراضية
+        return 1;
     }
     
     console.log("Mapped fruit", value, "to number:", result);
@@ -675,13 +713,11 @@ function callFlutterApp(action, params) {
     return new Promise(function(resolve, reject) {
         var requestId = 'req_' + (++requestIdCounter) + '_' + Date.now();
         
-        // تخزين callback
         pendingRequests[requestId] = {
             resolve: resolve,
             reject: reject
         };
         
-        // إرسال الطلب إلى Flutter
         var message = {
             action: action,
             requestId: requestId,
@@ -690,15 +726,12 @@ function callFlutterApp(action, params) {
         
         console.log("Sending to Flutter:", message);
         
-        // إرسال عبر JavaScript Channel
         if (window.FlamingoApp && typeof window.FlamingoApp.postMessage === 'function') {
             window.FlamingoApp.postMessage(JSON.stringify(message));
         } else if (window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
-            // دعم InAppWebView
             window.flutter_inappwebview.callHandler('FlamingoApp', JSON.stringify(message));
         } else {
             console.warn("FlamingoApp not available, trying direct call");
-            // محاولة مباشرة
             try {
                 if (window.flutterChannel && typeof window.flutterChannel.postMessage === 'function') {
                     window.flutterChannel.postMessage(JSON.stringify(message));
@@ -710,7 +743,6 @@ function callFlutterApp(action, params) {
             }
         }
         
-        // Timeout بعد 30 ثانية
         setTimeout(function() {
             if (pendingRequests[requestId]) {
                 delete pendingRequests[requestId];
@@ -738,7 +770,7 @@ function sendToFlutter(data) {
 }
 
 /**
- * إصلاح دالة getInfo لعرض آخر فاكهة رابحة بشكل صحيح
+ * دالة getInfo محسّنة لعرض آخر فاكهة رابحة بشكل صحيح
  */
 function getInfo(_round, isChoice) {
     console.log("Getting game info...");
@@ -751,7 +783,6 @@ function getInfo(_round, isChoice) {
     callFlutterApp('game_info', params).then(function(res) {
         console.log("Info response:", res);
         if (res.code === 200 && res.data) {
-            // التحقق من صحة الاستجابة
             if (res.data.countdown === undefined) {
                 console.error("Invalid response data:", res.data);
                 return;
@@ -816,8 +847,9 @@ function getInfo(_round, isChoice) {
                 // تحديث صورة الفاكهة في noPrize1 - استخدام الفاكهة الأخيرة
                 var noPrizeImg = $(".noPrize1>div img:last-child")[0];
                 if (noPrizeImg) {
-                    noPrizeImg.src = getGiftImagePath(fruitNumber);
-                    console.log("Updated noPrize1 image to fruit", fruitNumber);
+                    var fruitImagePath = getGiftImagePath(fruitNumber);
+                    noPrizeImg.src = fruitImagePath;
+                    console.log("✅ Updated noPrize1 image to fruit", fruitNumber, "path:", fruitImagePath);
                 }
             }
 
@@ -912,7 +944,7 @@ function getBill() {
                 var tempItem = res.data[i];
                 var isWin = tempItem.choice == tempItem.result;
                 var choiceNumber = searchGift(tempItem.choice);
-                var resultNumber = searchGift(tempItem.result || 'b'); // افتراضي إذا لم تكن هناك نتيجة
+                var resultNumber = searchGift(tempItem.result || 'b');
                 
                 innerHTML +=
                     '<div class="records-list-item flex ac js"><div class="inner-item">' +
@@ -954,11 +986,13 @@ function getRank() {
                 var item = res.data[i];
                 var avatarUrl = extractImageUrl(item.avatar);
                 
+                console.log(`Rank ${i + 1}: ${item.nick || item.username}, Avatar: ${avatarUrl}`);
+                
                 if (i < 3) {
                     topHTML +=
                         '<div class="personItem"><div class="logoArea"><div class="logo"><img src="' +
                         avatarUrl +
-                        '" alt="" onerror="this.src=\'images/default_avatar.png\'"></div> <img class="no' +
+                        '" alt="" onerror="this.src=\'images/default_avatar.png\'" style="width: 100%; height: 100%; object-fit: cover;"></div> <img class="no' +
                         (i + 1) +
                         '" src="images/no' +
                         (i + 1) +
@@ -974,7 +1008,7 @@ function getRank() {
                     (i + 1) +
                     '</div><div class="inner-item flex ac"><div class="logo"><img src="' +
                     avatarUrl +
-                    '" alt="" onerror="this.src=\'images/default_avatar.png\'"></div><div>' +
+                    '" alt="" onerror="this.src=\'images/default_avatar.png\'" style="width: 100%; height: 100%; object-fit: cover;"></div><div>' +
                     (item.nick || item.username || `User_${i + 1}`) +
                     '</div></div><div class="inner-item"><img src="images/gold.png" alt=""><div>' +
                     formatNumber(item.total || 0) +
@@ -997,13 +1031,10 @@ function clearAllTimers() {
 }
 
 function showSuccess(message) {
-    // هذه دالة يجب أن تكون موجودة في الملف الرئيسي
     console.log("Message:", message);
-    // يمكن إضافة عرض رسالة في الواجهة هنا
 }
 
 function changeLang(lang) {
-    // هذه دالة يجب أن تكون موجودة في الملف الرئيسي
     console.log("Language changed to:", lang);
 }
 
